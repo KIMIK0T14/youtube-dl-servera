@@ -1,7 +1,4 @@
 -- formas.lua
--- Módulo: Categoría de Construcción de Formas Geométricas
--- Requiere que el entorno (ENV) sea pasado desde main.lua
-
 local FormasModule = {}
 
 function FormasModule.init(ENV)
@@ -41,9 +38,6 @@ function FormasModule.init(ENV)
     local ICON_MOVE   = ENV.ICON_MOVE
     local ICON_ROT    = ENV.ICON_ROT
 
-    -- =========================================================
-    -- PÁGINA SCROLLING
-    -- =========================================================
     local PageBuild = mk("ScrollingFrame", Body, {
         Size = UDim2.new(1,0,1,0),
         BackgroundTransparency = 1,
@@ -54,15 +48,9 @@ function FormasModule.init(ENV)
         CanvasSize = UDim2.new(0,0,0,0),
         Visible = false
     })
-    mk("UIListLayout", PageBuild, {
-        Padding = UDim.new(0,6),
-        SortOrder = Enum.SortOrder.LayoutOrder
-    })
+    mk("UIListLayout", PageBuild, { Padding = UDim.new(0,6), SortOrder = Enum.SortOrder.LayoutOrder })
     pad(PageBuild, 10, 10, 10, 10)
 
-    -- =========================================================
-    -- ESTADO INTERNO
-    -- =========================================================
     local selShape    = 1
     local centerPos   = nil
     local previewOn   = true
@@ -80,20 +68,29 @@ function FormasModule.init(ENV)
     local gbRunningRef = ENV.gbRunning
     local buildState  = {running=false, cancel=false}
 
-    -- =========================================================
-    -- GENERADOR DE FORMAS
-    -- =========================================================
+    -- Materiales reales
+    local BLOCK_VISUALS = {
+        ["WoodBlock"] = {mat=Enum.Material.Wood, col=Color3.fromRGB(133, 94, 66)},
+        ["PlasticBlock"] = {mat=Enum.Material.Plastic, col=Color3.fromRGB(163, 162, 165)},
+        ["MetalBlock"] = {mat=Enum.Material.Metal, col=Color3.fromRGB(155, 155, 155)},
+        ["GlassBlock"] = {mat=Enum.Material.Glass, col=Color3.fromRGB(160, 230, 255)},
+        ["IceBlock"] = {mat=Enum.Material.Ice, col=Color3.fromRGB(160, 230, 255)},
+        ["GrassBlock"] = {mat=Enum.Material.Grass, col=Color3.fromRGB(75, 151, 75)},
+        ["CobblestoneBlock"] = {mat=Enum.Material.Cobblestone, col=Color3.fromRGB(110, 110, 110)},
+        ["ConcreteBlock"] = {mat=Enum.Material.Concrete, col=Color3.fromRGB(140, 140, 140)},
+        ["NeonBlock"] = {mat=Enum.Material.Neon, col=Color3.fromRGB(200, 200, 200)},
+    }
+    local function getBlockVisual(name)
+        return BLOCK_VISUALS[name] or {mat=Enum.Material.Plastic, col=Color3.fromRGB(163, 162, 165)}
+    end
+    local selBlockMat = Enum.Material.Plastic
+    local selBlockCol = Color3.fromRGB(163, 162, 165)
+
     local generateShape, SHAPES
     do
-        local function circPts(n)
-            local p={}; for i=0,n-1 do local a=(i/n)*math.pi*2; p[#p+1]=Vector2.new(math.cos(a),math.sin(a)) end; return p
-        end
-        local function polyPts(sides,off)
-            local p={}; for k=0,sides-1 do local a=off+k*(2*math.pi/sides); p[#p+1]=Vector2.new(math.cos(a),math.sin(a)) end; return p
-        end
-        local function heartPts()
-            local p={}; for k=0,127 do local t=(k/128)*2*math.pi; p[#p+1]=Vector2.new(16*math.sin(t)^3/17,-(13*math.cos(t)-5*math.cos(2*t)-2*math.cos(3*t)-math.cos(4*t))/17) end; return p
-        end
+        local function circPts(n) local p={}; for i=0,n-1 do local a=(i/n)*math.pi*2; p[#p+1]=Vector2.new(math.cos(a),math.sin(a)) end; return p end
+        local function polyPts(sides,off) local p={}; for k=0,sides-1 do local a=off+k*(2*math.pi/sides); p[#p+1]=Vector2.new(math.cos(a),math.sin(a)) end; return p end
+        local function heartPts() local p={}; for k=0,127 do local t=(k/128)*2*math.pi; p[#p+1]=Vector2.new(16*math.sin(t)^3/17,-(13*math.cos(t)-5*math.cos(2*t)-2*math.cos(3*t)-math.cos(4*t))/17) end; return p end
         local SQ={Vector2.new(1,1),Vector2.new(-1,1),Vector2.new(-1,-1),Vector2.new(1,-1)}
         local function perimOf(u,r) local n=#u; local per=0; for i=1,n do local a=u[i]*r; local b=u[(i%n)+1]*r; per=per+(b-a).Magnitude end; return per end
         local function buildSampler(u,closed,r)
@@ -213,9 +210,6 @@ function FormasModule.init(ENV)
         end
     end
 
-    -- =========================================================
-    -- DRAW ICON
-    -- =========================================================
     local drawIcon
     do
         local function dLine(par,x1,y1,x2,y2,col)
@@ -237,9 +231,6 @@ function FormasModule.init(ENV)
         end
     end
 
-    -- =========================================================
-    -- HELPERS UI
-    -- =========================================================
     local BInput = {}
     local PARAM_MINS = {radius=0.01,height=0.01,thick=0.01,count=4,point=0}
     local readParams = function()
@@ -254,7 +245,7 @@ function FormasModule.init(ENV)
         }
     end
 
-    local cDummy = mk("Part", envF, {Size=Vector3.new(4,4,4),Transparency=1,Color=T.accent,Anchored=true,CanCollide=false,CanQuery=false,Material=Enum.Material.ForceField,Position=Vector3.new(0,-9999,0)})
+    local cDummy = mk("Part", envF, {Size=Vector3.new(4,4,4),Transparency=1,Color=T.accent,Anchored=true,CanCollide=false,CanQuery=false,Material=Enum.Material.Plastic,Position=Vector3.new(0,-9999,0)})
 
     local rowBuild = {}
     local function bRow(h, visFn)
@@ -311,9 +302,6 @@ function FormasModule.init(ENV)
         return bx
     end
 
-    -- =========================================================
-    -- UI: GRID DE FORMAS
-    -- =========================================================
     local shapeBtns  = {}
     local shapeIcons = {}
     local onShapeChange
@@ -325,6 +313,45 @@ function FormasModule.init(ENV)
         end
     end
 
+    -- MATERIAL (AHORA VA ANTES DEL COLOR)
+    local selBlockNameRef = {value="PlasticBlock"}
+    local matPickOv, matPickBtn
+    do
+        local rMat=bRow(30); lbl(rMat,"Material",UDim2.new(0,60,1,0),UDim2.new(0,0,0,0),T.sub)
+        matPickBtn=mk("TextButton",rMat,{Size=UDim2.new(1,-64,0,26),Position=UDim2.new(0,64,0.5,-13),BackgroundColor3=T.input,BorderSizePixel=0,Font=Enum.Font.GothamSemibold,TextSize=10,Text="",TextColor3=T.text,TextXAlignment=Enum.TextXAlignment.Left}); corner(matPickBtn,6)
+        local mIcon=mk("ImageLabel",matPickBtn,{Size=UDim2.new(0,20,0,20),Position=UDim2.new(0,4,0.5,-10),BackgroundTransparency=1,BorderSizePixel=0})
+        local mLabel=mk("TextLabel",matPickBtn,{Size=UDim2.new(1,-32,1,0),Position=UDim2.new(0,28,0,0),BackgroundTransparency=1,Font=Enum.Font.GothamSemibold,TextSize=10,TextColor3=T.text,TextXAlignment=Enum.TextXAlignment.Left,Text=selBlockNameRef.value})
+        local function updMatBtn(nm,iconId)
+            selBlockNameRef.value=nm; selBlockName=nm; mLabel.Text=nm; mIcon.Image=iconId or"rbxassetid://12328114032"
+            local vis = getBlockVisual(nm)
+            selBlockMat = vis.mat
+            selBlockCol = vis.col
+            markPreview()
+        end
+        matPickOv=mk("Frame",ENV.Win,{Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.35,BorderSizePixel=0,Visible=false,ZIndex=60})
+        mk("TextButton",matPickOv,{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=60,AutoButtonColor=false}).MouseButton1Click:Connect(function() matPickOv.Visible=false end)
+        local pBox=mk("Frame",matPickOv,{Size=UDim2.new(1,-20,0.85,0),AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.new(0.5,0,0.5,0),BackgroundColor3=T.panel,BorderSizePixel=0,ZIndex=61}); corner(pBox,10)
+        mk("TextLabel",pBox,{Size=UDim2.new(1,0,0,28),BackgroundTransparency=1,Text="ELEGIR BLOQUE",TextColor3=T.text,Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=62})
+        local pScroll=mk("ScrollingFrame",pBox,{Size=UDim2.new(1,-8,1,-36),Position=UDim2.new(0,4,0,30),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=T.accent,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.new(0,0,0,0),ZIndex=62}); mk("UIListLayout",pScroll,{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder}); pad(pScroll,4,4,4,4)
+        local function popPicker()
+            for _,c in ipairs(pScroll:GetChildren()) do if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end end
+            local df=LP:FindFirstChild("Data"); if not df then return end
+            local function getBI(name) local pg=LP:FindFirstChildOfClass("PlayerGui"); if pg then local bf=pg:FindFirstChild("BuildGui") and pg.BuildGui:FindFirstChild("InventoryFrame") and pg.BuildGui.InventoryFrame:FindFirstChild("ScrollingFrame") and pg.BuildGui.InventoryFrame.ScrollingFrame:FindFirstChild("BlocksFrame"); if bf then local tpl=bf:FindFirstChild(name); if tpl and tpl:IsA("ImageButton") then return tpl.Image end end end; return"" end
+            local order=0
+            for _,item in ipairs(df:GetChildren()) do
+                if item:IsA("ValueBase") and item.Name:sub(-5)=="Block" then local qty=tonumber(item.Value) or 0; if qty>0 then order=order+1; local fi=getBI(item.Name); local row=mk("TextButton",pScroll,{Size=UDim2.new(1,0,0,36),BackgroundColor3=T.card,BorderSizePixel=0,Text="",LayoutOrder=order,ZIndex=63}); corner(row,6); mk("ImageLabel",row,{Size=UDim2.new(0,26,0,26),Position=UDim2.new(0,5,0.5,-13),BackgroundTransparency=1,ZIndex=64,Image=fi~=""and fi or"rbxassetid://12328114032"}); mk("TextLabel",row,{Size=UDim2.new(1,-80,1,0),Position=UDim2.new(0,36,0,0),BackgroundTransparency=1,Font=Enum.Font.GothamSemibold,TextSize=11,TextColor3=T.text,TextXAlignment=Enum.TextXAlignment.Left,Text=item.Name,ZIndex=64}); mk("TextLabel",row,{Size=UDim2.new(0,70,1,0),Position=UDim2.new(1,-74,0,0),BackgroundTransparency=1,Font=Enum.Font.GothamBold,TextSize=11,TextColor3=T.sub,TextXAlignment=Enum.TextXAlignment.Right,Text="x"..tostring(qty),ZIndex=64}); local ci=fi; row.MouseButton1Click:Connect(function() updMatBtn(item.Name,ci); matPickOv.Visible=false end) end end
+            end
+            if order==0 then mk("TextLabel",pScroll,{Size=UDim2.new(1,0,0,30),BackgroundTransparency=1,Text="No tienes bloques",TextColor3=T.sub,Font=Enum.Font.Gotham,TextSize=11,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=63}) end
+        end
+        matPickBtn.MouseButton1Click:Connect(function() popPicker(); matPickOv.Visible=true end)
+        task.defer(function()
+            task.wait(0.8); local df=LP:FindFirstChild("Data"); if not df then return end
+            local function fI(nm) local pg=LP:FindFirstChildOfClass("PlayerGui"); if pg then local bf=pg:FindFirstChild("BuildGui") and pg.BuildGui:FindFirstChild("InventoryFrame") and pg.BuildGui.InventoryFrame:FindFirstChild("ScrollingFrame") and pg.BuildGui.InventoryFrame.ScrollingFrame:FindFirstChild("BlocksFrame"); if bf then local tpl=bf:FindFirstChild(nm); if tpl and tpl:IsA("ImageButton") then return tpl.Image end end end; return"" end
+            local pb=df:FindFirstChild("PlasticBlock"); if pb and(tonumber(pb.Value) or 0)>0 then updMatBtn("PlasticBlock",fI("PlasticBlock")) else for _,item in ipairs(df:GetChildren()) do if item:IsA("ValueBase") and item.Name:sub(-5)=="Block" and(tonumber(item.Value) or 0)>0 then updMatBtn(item.Name,fI(item.Name)); break end end end
+        end)
+    end
+
+    -- COLOR (DEBAJO DE MATERIAL)
     local colBtnInd
     do
         local rColor = bRow(28)
@@ -340,6 +367,7 @@ function FormasModule.init(ENV)
         end)
     end
 
+    -- GRID DE FORMAS
     do
         local rGrid = bRow(90)
         mk("UIGridLayout", rGrid, {CellSize=UDim2.new(0,38,0,38),CellPadding=UDim2.new(0,6,0,6),SortOrder=Enum.SortOrder.LayoutOrder})
@@ -403,38 +431,6 @@ function FormasModule.init(ENV)
         fillGridBtn.MouseButton1Click:Connect(function() capFillMode="grid"; refreshFill(); markPreview() end)
     end
 
-    local selBlockNameRef = {value="PlasticBlock"}
-    local matPickOv, matPickBtn
-    do
-        local rMat=bRow(30); lbl(rMat,"Material",UDim2.new(0,60,1,0),UDim2.new(0,0,0,0),T.sub)
-        matPickBtn=mk("TextButton",rMat,{Size=UDim2.new(1,-64,0,26),Position=UDim2.new(0,64,0.5,-13),BackgroundColor3=T.input,BorderSizePixel=0,Font=Enum.Font.GothamSemibold,TextSize=10,Text="",TextColor3=T.text,TextXAlignment=Enum.TextXAlignment.Left}); corner(matPickBtn,6)
-        local mIcon=mk("ImageLabel",matPickBtn,{Size=UDim2.new(0,20,0,20),Position=UDim2.new(0,4,0.5,-10),BackgroundTransparency=1,BorderSizePixel=0})
-        local mLabel=mk("TextLabel",matPickBtn,{Size=UDim2.new(1,-32,1,0),Position=UDim2.new(0,28,0,0),BackgroundTransparency=1,Font=Enum.Font.GothamSemibold,TextSize=10,TextColor3=T.text,TextXAlignment=Enum.TextXAlignment.Left,Text=selBlockNameRef.value})
-        local function updMatBtn(nm,iconId) selBlockNameRef.value=nm; selBlockName=nm; mLabel.Text=nm; mIcon.Image=iconId or"rbxassetid://12328114032" end
-        matPickOv=mk("Frame",ENV.Win,{Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.35,BorderSizePixel=0,Visible=false,ZIndex=60})
-        mk("TextButton",matPickOv,{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=60,AutoButtonColor=false}).MouseButton1Click:Connect(function() matPickOv.Visible=false end)
-        local pBox=mk("Frame",matPickOv,{Size=UDim2.new(1,-20,0.85,0),AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.new(0.5,0,0.5,0),BackgroundColor3=T.panel,BorderSizePixel=0,ZIndex=61}); corner(pBox,10)
-        mk("TextLabel",pBox,{Size=UDim2.new(1,0,0,28),BackgroundTransparency=1,Text="ELEGIR BLOQUE",TextColor3=T.text,Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=62})
-        local pScroll=mk("ScrollingFrame",pBox,{Size=UDim2.new(1,-8,1,-36),Position=UDim2.new(0,4,0,30),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=T.accent,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.new(0,0,0,0),ZIndex=62}); mk("UIListLayout",pScroll,{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder}); pad(pScroll,4,4,4,4)
-        local function popPicker()
-            for _,c in ipairs(pScroll:GetChildren()) do if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end end
-            local df=LP:FindFirstChild("Data"); if not df then return end
-            local function getBI(name) local pg=LP:FindFirstChildOfClass("PlayerGui"); if pg then local bf=pg:FindFirstChild("BuildGui") and pg.BuildGui:FindFirstChild("InventoryFrame") and pg.BuildGui.InventoryFrame:FindFirstChild("ScrollingFrame") and pg.BuildGui.InventoryFrame.ScrollingFrame:FindFirstChild("BlocksFrame"); if bf then local tpl=bf:FindFirstChild(name); if tpl and tpl:IsA("ImageButton") then return tpl.Image end end end; return"" end
-            local order=0
-            for _,item in ipairs(df:GetChildren()) do
-                if item:IsA("ValueBase") and item.Name:sub(-5)=="Block" then local qty=tonumber(item.Value) or 0; if qty>0 then order=order+1; local fi=getBI(item.Name); local row=mk("TextButton",pScroll,{Size=UDim2.new(1,0,0,36),BackgroundColor3=T.card,BorderSizePixel=0,Text="",LayoutOrder=order,ZIndex=63}); corner(row,6); mk("ImageLabel",row,{Size=UDim2.new(0,26,0,26),Position=UDim2.new(0,5,0.5,-13),BackgroundTransparency=1,ZIndex=64,Image=fi~=""and fi or"rbxassetid://12328114032"}); mk("TextLabel",row,{Size=UDim2.new(1,-80,1,0),Position=UDim2.new(0,36,0,0),BackgroundTransparency=1,Font=Enum.Font.GothamSemibold,TextSize=11,TextColor3=T.text,TextXAlignment=Enum.TextXAlignment.Left,Text=item.Name,ZIndex=64}); mk("TextLabel",row,{Size=UDim2.new(0,70,1,0),Position=UDim2.new(1,-74,0,0),BackgroundTransparency=1,Font=Enum.Font.GothamBold,TextSize=11,TextColor3=T.sub,TextXAlignment=Enum.TextXAlignment.Right,Text="x"..tostring(qty),ZIndex=64}); local ci=fi; row.MouseButton1Click:Connect(function() updMatBtn(item.Name,ci); matPickOv.Visible=false end) end end
-            end
-            if order==0 then mk("TextLabel",pScroll,{Size=UDim2.new(1,0,0,30),BackgroundTransparency=1,Text="No tienes bloques",TextColor3=T.sub,Font=Enum.Font.Gotham,TextSize=11,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=63}) end
-        end
-        matPickBtn.MouseButton1Click:Connect(function() popPicker(); matPickOv.Visible=true end)
-        task.defer(function()
-            task.wait(0.8); local df=LP:FindFirstChild("Data"); if not df then return end
-            local function fI(nm) local pg=LP:FindFirstChildOfClass("PlayerGui"); if pg then local bf=pg:FindFirstChild("BuildGui") and pg.BuildGui:FindFirstChild("InventoryFrame") and pg.BuildGui.InventoryFrame:FindFirstChild("ScrollingFrame") and pg.BuildGui.InventoryFrame.ScrollingFrame:FindFirstChild("BlocksFrame"); if bf then local tpl=bf:FindFirstChild(nm); if tpl and tpl:IsA("ImageButton") then return tpl.Image end end end; return"" end
-            local pb=df:FindFirstChild("PlasticBlock"); if pb and(tonumber(pb.Value) or 0)>0 then updMatBtn("PlasticBlock",fI("PlasticBlock")) else for _,item in ipairs(df:GetChildren()) do if item:IsA("ValueBase") and item.Name:sub(-5)=="Block" and(tonumber(item.Value) or 0)>0 then updMatBtn(item.Name,fI(item.Name)); break end end end
-        end)
-    end
-
-    -- HANDLES 3D
     local PURPLE_GAMER = Color3.fromRGB(170, 0, 255)
     local Handles = mk("Handles", SG, {
         Adornee    = cDummy,
@@ -444,7 +440,7 @@ function FormasModule.init(ENV)
     })
     pcall(function() Handles.AlwaysOnTop = true end)
 
-    local ArcAdornee = mk("Part", envF, {Size=Vector3.new(12,12,12),Transparency=1,Anchored=true,CanCollide=false,CanQuery=false,Material=Enum.Material.ForceField,Position=Vector3.new(0,-9999,0)})
+    local ArcAdornee = mk("Part", envF, {Size=Vector3.new(12,12,12),Transparency=1,Anchored=true,CanCollide=false,CanQuery=false,Material=Enum.Material.Plastic,Position=Vector3.new(0,-9999,0)})
     local Arc = mk("ArcHandles", SG, {
         Adornee = ArcAdornee,
         Color3  = PURPLE_GAMER,
@@ -522,15 +518,15 @@ function FormasModule.init(ENV)
         BtnPrev=btn(rPrev,"Vista previa: On",UDim2.new(1,-80,1,0),nil,T.accent); BtnPrev.TextColor3=T.bg
         local prevAlphaFrame=mk("Frame",rPrev,{Size=UDim2.new(0,76,1,0),Position=UDim2.new(1,-76,0,0),BackgroundColor3=T.btnAlt,BorderSizePixel=0}); corner(prevAlphaFrame,6)
         local pAlphaDown=btn(prevAlphaFrame,"-",UDim2.new(0,22,1,0),UDim2.new(0,0,0,0),T.btnAlt)
-        local pAlphaLbl=lbl(prevAlphaFrame,math.floor((1-previewAlpha)*100).."%",UDim2.new(0,28,1,0),UDim2.new(0,22,0,0),T.text); pAlphaLbl.TextXAlignment=Enum.TextXAlignment.Center; pAlphaLbl.Font=Enum.Font.GothamBold; pAlphaLbl.TextSize=10
+        local pAlphaLbl=lbl(prevAlphaFrame,math.floor(previewAlpha*100).."%",UDim2.new(0,28,1,0),UDim2.new(0,22,0,0),T.text); pAlphaLbl.TextXAlignment=Enum.TextXAlignment.Center; pAlphaLbl.Font=Enum.Font.GothamBold; pAlphaLbl.TextSize=10
         local pAlphaUp=btn(prevAlphaFrame,"+",UDim2.new(0,22,1,0),UDim2.new(1,-22,0,0),T.btnAlt)
         local function setAlpha(v)
             previewAlpha=math.clamp(v,0,0.95)
-            pAlphaLbl.Text=math.floor((1-previewAlpha)*100).."%"
+            pAlphaLbl.Text=math.floor(previewAlpha*100).."%"
             markPreview()
         end
-        pAlphaDown.MouseButton1Click:Connect(function() setAlpha(previewAlpha+0.10) end)
-        pAlphaUp.MouseButton1Click:Connect(function() setAlpha(previewAlpha-0.10) end)
+        pAlphaDown.MouseButton1Click:Connect(function() setAlpha(previewAlpha-0.10) end)
+        pAlphaUp.MouseButton1Click:Connect(function() setAlpha(previewAlpha+0.10) end)
 
         local rBld=bRow(32)
         BtnBuild=btn(rBld,"Construir",UDim2.new(1,0,1,0),nil,T.build); BtnBuild.TextColor3=Color3.new(0,0,0)
@@ -540,8 +536,10 @@ function FormasModule.init(ENV)
 
     local function setStat(t,col) StatLbl.Text=t; StatLbl.TextColor3=col or T.text end
 
+    -- Solo renderizar si la pestaña está activa
     LP:GetPropertyChangedSignal("Team"):Connect(function()
         task.wait(0.5)
+        if not PageBuild.Visible then return end
         local z=closestZone(myRefPos())
         if z then
             centerPos = getZoneSurface(z)
@@ -573,9 +571,11 @@ function FormasModule.init(ENV)
         local n=0
         for i=1,#plan,stride do
             n=n+1; local p=prevPool[n]
-            if not p then p=mk("Part",prevF,{Anchored=true,CanCollide=false,CanQuery=false,CanTouch=false,CastShadow=false,Material=Enum.Material.ForceField}); prevPool[n]=p end
+            if not p then p=mk("Part",prevF,{Anchored=true,CanCollide=false,CanQuery=false,CanTouch=false,CastShadow=false,Material=Enum.Material.Plastic}); prevPool[n]=p end
             p.Size=plan[i].size; p.CFrame=plan[i].cframe
-            if buildUseColor then p.Color=selColor; p.Transparency=previewAlpha else p.Color=T.accent; p.Transparency=previewAlpha end
+            p.Material = selBlockMat
+            if buildUseColor then p.Color=selColor else p.Color=selBlockCol end
+            p.Transparency=previewAlpha
         end
         for i=n+1,#prevPool do prevPool[i].Transparency=1; prevPool[i].Size=Vector3.new(0.05,0.05,0.05) end
         return #plan,(stride>1)
