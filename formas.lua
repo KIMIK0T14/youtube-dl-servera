@@ -67,87 +67,49 @@ function FormasModule.init(ENV)
     local selBlockName = "PlasticBlock"
     local gbRunningRef = ENV.gbRunning
     local buildState  = {running=false, cancel=false}
-    local needsRecenter = false
 
-    -- Material/color del bloque seleccionado (se actualiza al elegir bloque)
+    -- ── Material/color actuales del bloque seleccionado ──
     local selBlockMat = Enum.Material.Plastic
     local selBlockCol = Color3.fromRGB(163,162,165)
 
-    -- ══════════════════════════════════════════════
-    -- Obtener Material y Color REALES del bloque
-    -- Igual que builds.lua: busca la parte template del juego que tiene
-    -- el Material y BrickColor originales definidos por el juego
-    -- ══════════════════════════════════════════════
-    local function getRealBlockVisual(blockName)
-        -- 1) Buscar en el folder de templates del juego (BlockTemplates u otros)
-        --    El juego guarda partes modelo con el material/color real
-        local ws = game:GetService("Workspace")
+    local needsRecenter = false
 
-        -- Intentar primero en el folder del jugador (bloques ya colocados)
-        local pf = userFolder and pcall(userFolder, LP.Name) and userFolder(LP.Name)
-        if pf then
-            for _, p in ipairs(pf:GetChildren()) do
-                if p:IsA("BasePart") and p.Name == blockName then
-                    return p.Material, p.Color
+    local function readRealBlockVisual(blockName)
+        local folder = userFolder and userFolder(LP.Name)
+        if folder then
+            for _, part in ipairs(folder:GetChildren()) do
+                if part:IsA("BasePart") and part.Name == blockName then
+                    return part.Material, part.Color
                 end
             end
         end
-
-        -- 2) Buscar en carpetas típicas del juego: BlockTemplates, Blocks, Templates, etc.
-        local searchRoots = {ws, game:GetService("ReplicatedStorage"), game:GetService("ServerStorage")}
-        local folderNames = {"BlockTemplates","Blocks","Templates","BlockModels","Parts","Items"}
-        for _, root in ipairs(searchRoots) do
-            pcall(function()
-                for _, fname in ipairs(folderNames) do
-                    local folder = root:FindFirstChild(fname, true)
-                    if folder then
-                        local tpl = folder:FindFirstChild(blockName, true)
-                        if tpl then
-                            if tpl:IsA("BasePart") then
-                                selBlockMat = tpl.Material
-                                selBlockCol = tpl.Color
-                                return tpl.Material, tpl.Color
-                            elseif tpl:IsA("Model") then
-                                local p = tpl:FindFirstChildOfClass("BasePart")
-                                if p then
-                                    return p.Material, p.Color
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-
-        -- 3) Buscar cualquier BasePart con ese nombre en el workspace (profundidad limitada)
-        local function search(parent, depth)
-            if depth > 5 then return nil, nil end
+        local ws = game:GetService("Workspace")
+        local function searchRecursive(parent, depth)
+            if depth > 4 then return nil, nil end
             for _, inst in ipairs(parent:GetChildren()) do
                 if inst:IsA("BasePart") and inst.Name == blockName then
                     return inst.Material, inst.Color
                 end
-                local m, c = search(inst, depth+1)
+                local m, c = searchRecursive(inst, depth + 1)
                 if m then return m, c end
             end
             return nil, nil
         end
-        local mat, col = search(ws, 0)
+        local mat, col = searchRecursive(ws, 0)
         if mat then return mat, col end
-
-        -- 4) Fallback estático solo si no se encontró nada
-        local FB = {
-            ["WoodBlock"]        = {Enum.Material.Wood,        Color3.fromRGB(133, 94,  66)},
-            ["PlasticBlock"]     = {Enum.Material.Plastic,     Color3.fromRGB(163,162, 165)},
-            ["MetalBlock"]       = {Enum.Material.Metal,       Color3.fromRGB(155,155, 155)},
-            ["GlassBlock"]       = {Enum.Material.Glass,       Color3.fromRGB(160,230, 255)},
-            ["IceBlock"]         = {Enum.Material.Ice,         Color3.fromRGB(160,230, 255)},
-            ["GrassBlock"]       = {Enum.Material.Grass,       Color3.fromRGB( 75,151,  75)},
-            ["CobblestoneBlock"] = {Enum.Material.Cobblestone, Color3.fromRGB(110,110, 110)},
-            ["ConcreteBlock"]    = {Enum.Material.Concrete,    Color3.fromRGB(140,140, 140)},
-            ["NeonBlock"]        = {Enum.Material.Neon,        Color3.fromRGB(200,200, 200)},
+        local FALLBACK = {
+            ["WoodBlock"]        = {mat=Enum.Material.Wood,        col=Color3.fromRGB(133, 94,  66)},
+            ["PlasticBlock"]     = {mat=Enum.Material.Plastic,     col=Color3.fromRGB(163,162, 165)},
+            ["MetalBlock"]       = {mat=Enum.Material.Metal,       col=Color3.fromRGB(155,155, 155)},
+            ["GlassBlock"]       = {mat=Enum.Material.Glass,       col=Color3.fromRGB(160,230, 255)},
+            ["IceBlock"]         = {mat=Enum.Material.Ice,         col=Color3.fromRGB(160,230, 255)},
+            ["GrassBlock"]       = {mat=Enum.Material.Grass,       col=Color3.fromRGB( 75,151,  75)},
+            ["CobblestoneBlock"] = {mat=Enum.Material.Cobblestone, col=Color3.fromRGB(110,110, 110)},
+            ["ConcreteBlock"]    = {mat=Enum.Material.Concrete,    col=Color3.fromRGB(140,140, 140)},
+            ["NeonBlock"]        = {mat=Enum.Material.Neon,        col=Color3.fromRGB(200,200, 200)},
         }
-        local fb = FB[blockName] or {Enum.Material.Plastic, Color3.fromRGB(163,162,165)}
-        return fb[1], fb[2]
+        local fb = FALLBACK[blockName] or {mat=Enum.Material.Plastic, col=Color3.fromRGB(163,162,165)}
+        return fb.mat, fb.col
     end
 
     local generateShape, SHAPES
@@ -252,13 +214,13 @@ function FormasModule.init(ENV)
             addHalfEllipsoid(plan,cx,cy-bodyH/2,cz,r,capL,th,count,false)
         end
         SHAPES = {
-            {label="Circulo",  icon="circle",  kind="extrude",  pts=function() return circPts(96) end,          caps="both",   fillable=true,  useHeight=true,  useCount=true, usePoint=false},
-            {label="Cuadrado", icon="square",  kind="extrude",  pts=function() return polyPts(4,math.pi/4) end, caps="both",   fillable=true,  useHeight=true,  useCount=true, usePoint=false},
-            {label="Corazon",  icon="heart",   kind="extrude",  pts=heartPts,                                   caps="both",   fillable=true,  useHeight=true,  useCount=true, usePoint=false},
+            {label="Circulo",  icon="circle",  kind="extrude",  pts=function() return circPts(96) end,       caps="both",   fillable=true,  useHeight=true,  useCount=true, usePoint=false},
+            {label="Cuadrado", icon="square",  kind="extrude",  pts=function() return polyPts(4,math.pi/4) end, caps="both",fillable=true,  useHeight=true,  useCount=true, usePoint=false},
+            {label="Corazon",  icon="heart",   kind="extrude",  pts=heartPts,                                caps="both",   fillable=true,  useHeight=true,  useCount=true, usePoint=false},
             {label="Cubo",     icon="cube",    kind="cube3d",   caps="both",   fillable=false, useHeight=false, useCount=true, usePoint=false},
             {label="Esfera",   icon="sphere",  kind="sphere3d", caps=false,    fillable=false, useHeight=false, useCount=true, usePoint=false},
-            {label="Piramide", icon="pyramid", kind="pyramid",  caps="bottom", fillable=true,  useHeight=true,  useCount=true, usePoint=true,  pointy=true},
-            {label="Capsula",  icon="capsule", kind="capsule",  caps=false,    fillable=false, useHeight=true,  useCount=true, usePoint=true,  pointy=true},
+            {label="Piramide", icon="pyramid", kind="pyramid",  caps="bottom", fillable=true,  useHeight=true,  useCount=true, usePoint=true, pointy=true},
+            {label="Capsula",  icon="capsule", kind="capsule",  caps=false,    fillable=false, useHeight=true,  useCount=true, usePoint=true, pointy=true},
         }
         generateShape = function(def, cp, P)
             local plan={}; if not cp then return plan end
@@ -299,12 +261,12 @@ function FormasModule.init(ENV)
     local PARAM_MINS = {radius=0.01,height=0.01,thick=0.01,count=4,point=0}
     local readParams = function()
         return {
-            radius    = math.max(PARAM_MINS.radius,  tonumber(BInput.bRadius and BInput.bRadius.Text) or 20),
-            height    = math.max(PARAM_MINS.height,  tonumber(BInput.bSizeY  and BInput.bSizeY.Text)  or 8),
-            thick     = math.max(PARAM_MINS.thick,   tonumber(BInput.bThick  and BInput.bThick.Text)  or 1),
-            count     = math.max(PARAM_MINS.count,   math.floor(tonumber(BInput.bSteps and BInput.bSteps.Text) or 120)),
-            point     = math.clamp(tonumber(BInput.bPunta and BInput.bPunta.Text) or 0, 0, 1),
-            capTop    = capTopOn,
+            radius   = math.max(PARAM_MINS.radius,  tonumber(BInput.bRadius and BInput.bRadius.Text) or 20),
+            height   = math.max(PARAM_MINS.height,  tonumber(BInput.bSizeY  and BInput.bSizeY.Text)  or 8),
+            thick    = math.max(PARAM_MINS.thick,   tonumber(BInput.bThick  and BInput.bThick.Text)  or 1),
+            count    = math.max(PARAM_MINS.count,   math.floor(tonumber(BInput.bSteps and BInput.bSteps.Text) or 120)),
+            point    = math.clamp(tonumber(BInput.bPunta and BInput.bPunta.Text) or 0, 0, 1),
+            capTop   = capTopOn,
             capBottom = capBotOn,
         }
     end
@@ -378,7 +340,7 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- UI 1: Grid de formas geométricas
+    -- UI ORDEN 1: Grid de formas geométricas
     -- ══════════════════════════════════════════════
     do
         local rGrid = bRow(90)
@@ -397,7 +359,7 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- UI 2: Parámetros numéricos
+    -- UI ORDEN 2: Parámetros numéricos
     -- ══════════════════════════════════════════════
     do
         local rRad=bRow(24); BInput.bRadius=mkNumRow(rRad,"Radio","20",1,0.01)
@@ -408,7 +370,7 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- UI 3: Tapas
+    -- UI ORDEN 3: Tapas
     -- ══════════════════════════════════════════════
     local capBtnTop, capBtnBot
     local function refreshCaps()
@@ -436,7 +398,7 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- UI 4: Relleno de tapas
+    -- UI ORDEN 4: Relleno de tapas
     -- ══════════════════════════════════════════════
     local fillStripBtn, fillGridBtn
     local function refreshFill()
@@ -453,23 +415,20 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- UI 5: MATERIAL + COLOR en una sola fila compacta
-    -- Layout: [🎨 icono bloque | Elegir color | ON/OFF | ▼ inventario]
-    -- Sin etiquetas "Color" ni "Material" para ahorrar espacio vertical
+    -- UI ORDEN 5: COLOR & MATERIAL COMBINADO (Ahorro vertical)
     -- ══════════════════════════════════════════════
     local selBlockNameRef = {value="PlasticBlock"}
-    local matPickOv
-    local mIconRef   -- icono del bloque en la fila
-    local colBtnInd  -- cuadradito de color
+    local matPickOv, matPickBtn
+    local mLabelRef  
+    local mIconRef   
 
-    -- Actualiza bloque: lee Material y Color reales del juego (igual que builds.lua)
     local function updMatBtn(nm, iconId)
         selBlockNameRef.value = nm
         selBlockName = nm
-        if mIconRef then mIconRef.Image = iconId or "rbxassetid://12328114032" end
-        -- Leer Material y Color reales en background
+        if mLabelRef then mLabelRef.Text = nm end
+        if mIconRef  then mIconRef.Image  = iconId or "rbxassetid://12328114032" end
         task.spawn(function()
-            local mat, col = getRealBlockVisual(nm)
+            local mat, col = readRealBlockVisual(nm)
             selBlockMat = mat
             selBlockCol = col
             markPreview()
@@ -477,128 +436,245 @@ function FormasModule.init(ENV)
     end
 
     do
-        -- Fila única: [icono_bloque] [Elegir color] [ON/OFF] [▼ inventario]
-        local rMatCol = bRow(30)
-
-        -- Botón icono del bloque seleccionado (abre picker de inventario)
-        local matBtn = mk("TextButton", rMatCol, {
-            Size = UDim2.new(0,30,0,26),
-            Position = UDim2.new(0,0,0.5,-13),
-            BackgroundColor3 = T.input,
-            BorderSizePixel = 0,
-            Text = "",
-        }); corner(matBtn, 6)
-        mIconRef = mk("ImageLabel", matBtn, {
-            Size = UDim2.new(0,22,0,22),
-            AnchorPoint = Vector2.new(0.5,0.5),
-            Position = UDim2.new(0.5,0,0.5,0),
-            BackgroundTransparency = 1,
-            BorderSizePixel = 0,
-        })
-
-        -- Indicador de color (cuadradito)
-        colBtnInd = mk("Frame", rMatCol, {
-            Size = UDim2.new(0,22,0,22),
-            AnchorPoint = Vector2.new(0,0.5),
-            Position = UDim2.new(0,34,0.5,0),
+        local rColorMat = bRow(28)
+        
+        -- Indicador de color
+        local colBtnInd = mk("Frame", rColorMat, {
+            Size = UDim2.new(0, 22, 0, 22),
+            Position = UDim2.new(0, 4, 0.5, -11),
             BackgroundColor3 = Color3.new(1,1,1),
-            BorderSizePixel = 0,
-        }); corner(colBtnInd,11); stroke(colBtnInd,T.text,1.5)
+            BorderSizePixel = 0
+        })
+        corner(colBtnInd, 11); stroke(colBtnInd, T.text, 1.5)
 
-        -- Botón "Elegir" color
-        local bColorPick = btn(rMatCol,"Elegir",UDim2.new(0,52,0,26),nil,T.btn)
-        bColorPick.AnchorPoint = Vector2.new(0,0.5)
-        bColorPick.Position    = UDim2.new(0,60,0.5,0)
+        -- Botón Elegir Color
+        local bOP = btn(rColorMat, "Elegir color", UDim2.new(0, 80, 0, 24), UDim2.new(0, 30, 0.5, -12), T.btn)
 
-        -- Toggle ON/OFF color
-        local bColorToggle = btn(rMatCol,"OFF",UDim2.new(0,38,0,26),nil,T.btnAlt)
-        bColorToggle.AnchorPoint = Vector2.new(0,0.5)
-        bColorToggle.Position    = UDim2.new(0,116,0.5,0)
+        -- Botón ON/OFF
+        local bTC = btn(rColorMat, "ON", UDim2.new(0, 36, 0, 24), UDim2.new(0, 114, 0.5, -12), T.btnAlt)
         local function refCB()
-            bColorToggle.BackgroundColor3 = buildUseColor and T.build or T.btnAlt
-            bColorToggle.Text = buildUseColor and "ON" or "OFF"
+            bTC.BackgroundColor3 = buildUseColor and T.build or T.btnAlt
+            bTC.Text = buildUseColor and "ON" or "OFF"
         end
         refCB()
-
-        -- Botón inventario de bloques (flecha a la derecha)
-        local matPickBtn = btn(rMatCol,"▼ Bloque",UDim2.new(1,-158,0,26),nil,T.btnAlt)
-        matPickBtn.AnchorPoint = Vector2.new(1,0.5)
-        matPickBtn.Position    = UDim2.new(1,0,0.5,0)
-        matPickBtn.TextSize    = 10
-
-        -- Eventos color
-        bColorToggle.MouseButton1Click:Connect(function()
-            buildUseColor = not buildUseColor; refCB(); markPreview()
+        bTC.MouseButton1Click:Connect(function()
+            buildUseColor = not buildUseColor
+            refCB()
+            markPreview()
         end)
-        bColorPick.MouseButton1Click:Connect(function()
-            openCP(selColor,
-                function(col) selColor=col; colBtnInd.BackgroundColor3=col; buildUseColor=true; refCB(); markPreview() end,
-                function(col) selColor=col; colBtnInd.BackgroundColor3=col; if buildUseColor then markPreview() end end)
+        bOP.MouseButton1Click:Connect(function()
+            openCP(selColor, function(col)
+                selColor = col
+                colBtnInd.BackgroundColor3 = col
+                buildUseColor = true
+                refCB()
+                markPreview()
+            end,
+            function(col)
+                selColor = col
+                colBtnInd.BackgroundColor3 = col
+                if buildUseColor then markPreview() end
+            end)
         end)
 
-        -- Overlay picker de inventario
-        matPickOv = mk("Frame",ENV.Win,{Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.35,BorderSizePixel=0,Visible=false,ZIndex=60})
-        mk("TextButton",matPickOv,{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=60,AutoButtonColor=false}).MouseButton1Click:Connect(function() matPickOv.Visible=false end)
-        local pBox=mk("Frame",matPickOv,{Size=UDim2.new(1,-20,0.85,0),AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.new(0.5,0,0.5,0),BackgroundColor3=T.panel,BorderSizePixel=0,ZIndex=61}); corner(pBox,10)
-        mk("TextLabel",pBox,{Size=UDim2.new(1,0,0,28),BackgroundTransparency=1,Text="ELEGIR BLOQUE",TextColor3=T.text,Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=62})
-        local pScroll=mk("ScrollingFrame",pBox,{Size=UDim2.new(1,-8,1,-36),Position=UDim2.new(0,4,0,30),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=T.accent,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.new(0,0,0,0),ZIndex=62})
-        mk("UIListLayout",pScroll,{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder}); pad(pScroll,4,4,4,4)
+        -- Botón Material / Seleccionar Bloque (A la derecha)
+        matPickBtn = mk("TextButton", rColorMat, {
+            Size = UDim2.new(1, -160, 0, 24),
+            Position = UDim2.new(0, 156, 0.5, -12),
+            BackgroundColor3 = T.input,
+            BorderSizePixel = 0,
+            Font = Enum.Font.GothamSemibold,
+            TextSize = 10,
+            Text = "",
+            TextColor3 = T.text,
+            TextXAlignment = Enum.TextXAlignment.Left
+        })
+        corner(matPickBtn, 6)
+
+        mIconRef = mk("ImageLabel", matPickBtn, {
+            Size = UDim2.new(0, 20, 0, 20),
+            Position = UDim2.new(0, 4, 0.5, -10),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0
+        })
+        mLabelRef = mk("TextLabel", matPickBtn, {
+            Size = UDim2.new(1, -32, 1, 0),
+            Position = UDim2.new(0, 28, 0, 0),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamSemibold,
+            TextSize = 10,
+            TextColor3 = T.text,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Text = selBlockNameRef.value
+        })
+
+        -- Overlay para seleccionar bloque
+        matPickOv = mk("Frame", ENV.Win, {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundColor3 = Color3.new(0, 0, 0),
+            BackgroundTransparency = 0.35,
+            BorderSizePixel = 0,
+            Visible = false,
+            ZIndex = 60
+        })
+        mk("TextButton", matPickOv, {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Text = "",
+            ZIndex = 60,
+            AutoButtonColor = false
+        }).MouseButton1Click:Connect(function() matPickOv.Visible = false end)
+
+        local pBox = mk("Frame", matPickOv, {
+            Size = UDim2.new(1, -20, 0.85, 0),
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0.5, 0, 0.5, 0),
+            BackgroundColor3 = T.panel,
+            BorderSizePixel = 0,
+            ZIndex = 61
+        })
+        corner(pBox, 10)
+
+        mk("TextLabel", pBox, {
+            Size = UDim2.new(1, 0, 0, 28),
+            BackgroundTransparency = 1,
+            Text = "ELEGIR BLOQUE",
+            TextColor3 = T.text,
+            Font = Enum.Font.GothamBold,
+            TextSize = 12,
+            TextXAlignment = Enum.TextXAlignment.Center,
+            ZIndex = 62
+        })
+
+        local pScroll = mk("ScrollingFrame", pBox, {
+            Size = UDim2.new(1, -8, 1, -36),
+            Position = UDim2.new(0, 4, 0, 30),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            ScrollBarThickness = 4,
+            ScrollBarImageColor3 = T.accent,
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+            ZIndex = 62
+        })
+        mk("UIListLayout", pScroll, { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder })
+        pad(pScroll, 4, 4, 4, 4)
 
         local function popPicker()
-            for _,c in ipairs(pScroll:GetChildren()) do if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end end
-            local df=LP:FindFirstChild("Data"); if not df then return end
+            for _, c in ipairs(pScroll:GetChildren()) do
+                if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end
+            end
+            local df = LP:FindFirstChild("Data")
+            if not df then return end
+
             local function getBI(name)
-                local pg=LP:FindFirstChildOfClass("PlayerGui")
+                local pg = LP:FindFirstChildOfClass("PlayerGui")
                 if pg then
-                    local bf=pg:FindFirstChild("BuildGui") and pg.BuildGui:FindFirstChild("InventoryFrame") and pg.BuildGui.InventoryFrame:FindFirstChild("ScrollingFrame") and pg.BuildGui.InventoryFrame.ScrollingFrame:FindFirstChild("BlocksFrame")
-                    if bf then local tpl=bf:FindFirstChild(name); if tpl and tpl:IsA("ImageButton") then return tpl.Image end end
+                    local bf = pg:FindFirstChild("BuildGui") and pg.BuildGui:FindFirstChild("InventoryFrame") and pg.BuildGui.InventoryFrame:FindFirstChild("ScrollingFrame") and pg.BuildGui.InventoryFrame.ScrollingFrame:FindFirstChild("BlocksFrame")
+                    if bf then
+                        local tpl = bf:FindFirstChild(name)
+                        if tpl and tpl:IsA("ImageButton") then return tpl.Image end
+                    end
                 end
                 return ""
             end
-            local order=0
-            for _,item in ipairs(df:GetChildren()) do
-                if item:IsA("ValueBase") and item.Name:sub(-5)=="Block" then
-                    local qty=tonumber(item.Value) or 0
-                    if qty>0 then
-                        order=order+1
-                        local fi=getBI(item.Name)
-                        local row=mk("TextButton",pScroll,{Size=UDim2.new(1,0,0,36),BackgroundColor3=T.card,BorderSizePixel=0,Text="",LayoutOrder=order,ZIndex=63}); corner(row,6)
-                        mk("ImageLabel",row,{Size=UDim2.new(0,26,0,26),Position=UDim2.new(0,5,0.5,-13),BackgroundTransparency=1,ZIndex=64,Image=fi~=""and fi or"rbxassetid://12328114032"})
-                        mk("TextLabel",row,{Size=UDim2.new(1,-80,1,0),Position=UDim2.new(0,36,0,0),BackgroundTransparency=1,Font=Enum.Font.GothamSemibold,TextSize=11,TextColor3=T.text,TextXAlignment=Enum.TextXAlignment.Left,Text=item.Name,ZIndex=64})
-                        mk("TextLabel",row,{Size=UDim2.new(0,70,1,0),Position=UDim2.new(1,-74,0,0),BackgroundTransparency=1,Font=Enum.Font.GothamBold,TextSize=11,TextColor3=T.sub,TextXAlignment=Enum.TextXAlignment.Right,Text="x"..tostring(qty),ZIndex=64})
-                        local ci=fi
+
+            local order = 0
+            for _, item in ipairs(df:GetChildren()) do
+                if item:IsA("ValueBase") and item.Name:sub(-5) == "Block" then
+                    local qty = tonumber(item.Value) or 0
+                    if qty > 0 then
+                        order = order + 1
+                        local fi = getBI(item.Name)
+                        local row = mk("TextButton", pScroll, {
+                            Size = UDim2.new(1, 0, 0, 36),
+                            BackgroundColor3 = T.card,
+                            BorderSizePixel = 0,
+                            Text = "",
+                            LayoutOrder = order,
+                            ZIndex = 63
+                        })
+                        corner(row, 6)
+                        mk("ImageLabel", row, {
+                            Size = UDim2.new(0, 26, 0, 26),
+                            Position = UDim2.new(0, 5, 0.5, -13),
+                            BackgroundTransparency = 1,
+                            ZIndex = 64,
+                            Image = fi ~= "" and fi or "rbxassetid://12328114032"
+                        })
+                        mk("TextLabel", row, {
+                            Size = UDim2.new(1, -80, 1, 0),
+                            Position = UDim2.new(0, 36, 0, 0),
+                            BackgroundTransparency = 1,
+                            Font = Enum.Font.GothamSemibold,
+                            TextSize = 11,
+                            TextColor3 = T.text,
+                            TextXAlignment = Enum.TextXAlignment.Left,
+                            Text = item.Name,
+                            ZIndex = 64
+                        })
+                        mk("TextLabel", row, {
+                            Size = UDim2.new(0, 70, 1, 0),
+                            Position = UDim2.new(1, -74, 0, 0),
+                            BackgroundTransparency = 1,
+                            Font = Enum.Font.GothamBold,
+                            TextSize = 11,
+                            TextColor3 = T.sub,
+                            TextXAlignment = Enum.TextXAlignment.Right,
+                            Text = "x" .. tostring(qty),
+                            ZIndex = 64
+                        })
+                        local ci = fi
                         row.MouseButton1Click:Connect(function()
-                            updMatBtn(item.Name,ci)
-                            matPickOv.Visible=false
+                            updMatBtn(item.Name, ci)
+                            matPickOv.Visible = false
                         end)
                     end
                 end
             end
-            if order==0 then mk("TextLabel",pScroll,{Size=UDim2.new(1,0,0,30),BackgroundTransparency=1,Text="No tienes bloques",TextColor3=T.sub,Font=Enum.Font.Gotham,TextSize=11,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=63}) end
+            if order == 0 then
+                mk("TextLabel", pScroll, {
+                    Size = UDim2.new(1, 0, 0, 30),
+                    BackgroundTransparency = 1,
+                    Text = "No tienes bloques",
+                    TextColor3 = T.sub,
+                    Font = Enum.Font.Gotham,
+                    TextSize = 11,
+                    TextXAlignment = Enum.TextXAlignment.Center,
+                    ZIndex = 63
+                })
+            end
         end
 
-        matBtn.MouseButton1Click:Connect(function() popPicker(); matPickOv.Visible=true end)
-        matPickBtn.MouseButton1Click:Connect(function() popPicker(); matPickOv.Visible=true end)
+        matPickBtn.MouseButton1Click:Connect(function()
+            popPicker()
+            matPickOv.Visible = true
+        end)
 
         -- Auto-seleccionar primer bloque al iniciar
         task.defer(function()
             task.wait(0.8)
-            local df=LP:FindFirstChild("Data"); if not df then return end
+            local df = LP:FindFirstChild("Data")
+            if not df then return end
             local function fI(nm)
-                local pg=LP:FindFirstChildOfClass("PlayerGui")
+                local pg = LP:FindFirstChildOfClass("PlayerGui")
                 if pg then
-                    local bf=pg:FindFirstChild("BuildGui") and pg.BuildGui:FindFirstChild("InventoryFrame") and pg.BuildGui.InventoryFrame:FindFirstChild("ScrollingFrame") and pg.BuildGui.InventoryFrame.ScrollingFrame:FindFirstChild("BlocksFrame")
-                    if bf then local tpl=bf:FindFirstChild(nm); if tpl and tpl:IsA("ImageButton") then return tpl.Image end end
+                    local bf = pg:FindFirstChild("BuildGui") and pg.BuildGui:FindFirstChild("InventoryFrame") and pg.BuildGui.InventoryFrame:FindFirstChild("ScrollingFrame") and pg.BuildGui.InventoryFrame.ScrollingFrame:FindFirstChild("BlocksFrame")
+                    if bf then
+                        local tpl = bf:FindFirstChild(nm)
+                        if tpl and tpl:IsA("ImageButton") then return tpl.Image end
+                    end
                 end
                 return ""
             end
-            local pb=df:FindFirstChild("PlasticBlock")
-            if pb and(tonumber(pb.Value) or 0)>0 then
-                updMatBtn("PlasticBlock",fI("PlasticBlock"))
+            local pb = df:FindFirstChild("PlasticBlock")
+            if pb and (tonumber(pb.Value) or 0) > 0 then
+                updMatBtn("PlasticBlock", fI("PlasticBlock"))
             else
-                for _,item in ipairs(df:GetChildren()) do
-                    if item:IsA("ValueBase") and item.Name:sub(-5)=="Block" and(tonumber(item.Value) or 0)>0 then
-                        updMatBtn(item.Name,fI(item.Name)); break
+                for _, item in ipairs(df:GetChildren()) do
+                    if item:IsA("ValueBase") and item.Name:sub(-5) == "Block" and (tonumber(item.Value) or 0) > 0 then
+                        updMatBtn(item.Name, fI(item.Name))
+                        break
                     end
                 end
             end
@@ -606,14 +682,14 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- Handles y Arc (3D, no UI)
+    -- Handles y Arc (objetos 3D, no UI)
     -- ══════════════════════════════════════════════
     local PURPLE_GAMER = Color3.fromRGB(170, 0, 255)
     local Handles = mk("Handles", SG, {
-        Adornee = cDummy,
-        Style   = Enum.HandlesStyle.Movement,
-        Color3  = PURPLE_GAMER,
-        Visible = false,
+        Adornee    = cDummy,
+        Style      = Enum.HandlesStyle.Movement,
+        Color3     = PURPLE_GAMER,
+        Visible    = false,
     })
     pcall(function() Handles.AlwaysOnTop = true end)
 
@@ -626,23 +702,28 @@ function FormasModule.init(ENV)
     pcall(function() Arc.AlwaysOnTop = true end)
 
     local function updateHandles()
-        local can = (centerPos~=nil) and not locked and PageBuild.Visible
+        local can=(centerPos~=nil) and not locked and PageBuild.Visible
         if can and toolMode=="move" then
-            Handles.Adornee = cDummy;     Handles.Visible = true;  Arc.Visible     = false
+            Handles.Adornee = cDummy
+            Handles.Visible = true
+            Arc.Visible     = false
         elseif can and toolMode=="rotate" then
-            Arc.Adornee = ArcAdornee;    Arc.Visible     = true;  Handles.Visible = false
+            Arc.Adornee = ArcAdornee
+            Arc.Visible = true
+            Handles.Visible = false
         else
-            Handles.Visible = false;     Arc.Visible     = false
+            Handles.Visible = false
+            Arc.Visible     = false
         end
     end
 
     -- ══════════════════════════════════════════════
-    -- UI 6: Selector Mover / Rotar
+    -- UI ORDEN 6: Selector Mover / Rotar
     -- ══════════════════════════════════════════════
     local bMove, bRotT, moveStepBox, rotStepBox
     local function refreshTool()
-        bMove.BackgroundColor3 = (toolMode=="move")   and T.btn or T.btnAlt
-        bRotT.BackgroundColor3 = (toolMode=="rotate") and T.btn or T.btnAlt
+        bMove.BackgroundColor3  = (toolMode=="move")   and T.btn or T.btnAlt
+        bRotT.BackgroundColor3  = (toolMode=="rotate") and T.btn or T.btnAlt
         updateHandles()
     end
     do
@@ -656,7 +737,7 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- UI 7: Centro zona / Sel. Posición + Vista previa + Construir
+    -- UI ORDEN 7: Centro zona / Sel. Posición + Vista previa + Construir
     -- ══════════════════════════════════════════════
     local selBox = mk("SelectionBox", SG, {Color3=T.accent, LineThickness=0.04})
     local BtnBuild, StatLbl, BtnPrev
@@ -669,16 +750,23 @@ function FormasModule.init(ENV)
     end
 
     local function getZoneSurface(z)
-        if z and z:IsA("BasePart") then return z.Position+Vector3.new(0,z.Size.Y/2+0.5,0) end
+        if z and z:IsA("BasePart") then
+            return z.Position + Vector3.new(0, z.Size.Y/2 + 0.5, 0)
+        end
         return Vector3.zero
     end
 
     local function centerOnClosestZone()
-        local z=closestZone(myRefPos())
+        local z = closestZone(myRefPos())
         if z then
-            centerPos=getZoneSurface(z); shapeRot=CFrame.identity; hasRot=false
-            cDummy.CFrame=CFrame.new(centerPos); ArcAdornee.CFrame=CFrame.new(centerPos)
-            updateHandles(); markPreview(); return true
+            centerPos    = getZoneSurface(z)
+            shapeRot     = CFrame.identity
+            hasRot       = false
+            cDummy.CFrame     = CFrame.new(centerPos)
+            ArcAdornee.CFrame = CFrame.new(centerPos)
+            updateHandles()
+            markPreview()
+            return true
         end
         return false
     end
@@ -688,7 +776,8 @@ function FormasModule.init(ENV)
         BtnBuildCenter=btn(rPos,"Centro zona",UDim2.new(0.5,-3,1,0),UDim2.new(0,0,0,0),T.accent); BtnBuildCenter.TextColor3=T.bg
         BtnBuildSel=btn(rPos,"Sel. Posición",UDim2.new(0.5,-3,1,0),UDim2.new(0.5,3,0,0),T.btnAlt)
         BtnBuildCenter.MouseButton1Click:Connect(function()
-            buildUseCZ=true; refreshBuildPlaceBtns(); centerOnClosestZone()
+            buildUseCZ=true; refreshBuildPlaceBtns()
+            centerOnClosestZone()
         end)
         local bSel2=false
         BtnBuildSel.MouseButton1Click:Connect(function()
@@ -712,9 +801,13 @@ function FormasModule.init(ENV)
         local pAlphaDown=btn(prevAlphaFrame,"-",UDim2.new(0,22,1,0),UDim2.new(0,0,0,0),T.btnAlt)
         local pAlphaLbl=lbl(prevAlphaFrame,math.floor(previewAlpha*100).."%",UDim2.new(0,28,1,0),UDim2.new(0,22,0,0),T.text); pAlphaLbl.TextXAlignment=Enum.TextXAlignment.Center; pAlphaLbl.Font=Enum.Font.GothamBold; pAlphaLbl.TextSize=10
         local pAlphaUp=btn(prevAlphaFrame,"+",UDim2.new(0,22,1,0),UDim2.new(1,-22,0,0),T.btnAlt)
-        local function setAlpha(v) previewAlpha=math.clamp(v,0,0.95); pAlphaLbl.Text=math.floor(previewAlpha*100).."%"; markPreview() end
+        local function setAlpha(v)
+            previewAlpha=math.clamp(v,0,0.95)
+            pAlphaLbl.Text=math.floor(previewAlpha*100).."%"
+            markPreview()
+        end
         pAlphaDown.MouseButton1Click:Connect(function() setAlpha(previewAlpha-0.10) end)
-        pAlphaUp.MouseButton1Click:Connect(function()   setAlpha(previewAlpha+0.10) end)
+        pAlphaUp.MouseButton1Click:Connect(function() setAlpha(previewAlpha+0.10) end)
 
         local rBld=bRow(32)
         BtnBuild=btn(rBld,"Construir",UDim2.new(1,0,1,0),nil,T.build); BtnBuild.TextColor3=Color3.new(0,0,0)
@@ -725,134 +818,131 @@ function FormasModule.init(ENV)
     local function setStat(t,col) StatLbl.Text=t; StatLbl.TextColor3=col or T.text end
 
     -- ══════════════════════════════════════════════
-    -- Fix cambio de equipo desde CUALQUIER pestaña
+    -- FIX CAMBIO DE EQUIPO
     -- ══════════════════════════════════════════════
     local function waitAndRecenter()
         task.spawn(function()
-            for _=1,20 do
+            for _ = 1, 20 do
                 task.wait(0.3)
-                local ok,ref=pcall(myRefPos)
-                if ok and ref and ref.Y>-100 then
-                    if centerOnClosestZone() then
-                        buildUseCZ=true; refreshBuildPlaceBtns(); needsRecenter=false; return
+                local ok, ref = pcall(myRefPos)
+                if ok and ref and ref.Y > -100 then
+                    local didCenter = centerOnClosestZone()
+                    if didCenter then
+                        buildUseCZ = true
+                        refreshBuildPlaceBtns()
+                        needsRecenter = false
+                        return
                     end
                 end
             end
-            needsRecenter=true
+            needsRecenter = true
         end)
     end
 
     LP:GetPropertyChangedSignal("Team"):Connect(function()
-        if PageBuild.Visible then waitAndRecenter() else needsRecenter=true end
+        if PageBuild.Visible then
+            waitAndRecenter()
+        else
+            needsRecenter = true
+        end
     end)
+
     LP.CharacterAdded:Connect(function(char)
-        local hrp=char:WaitForChild("HumanoidRootPart",8); if not hrp then return end
+        local hrp = char:WaitForChild("HumanoidRootPart", 8)
+        if not hrp then return end
         task.wait(0.2)
-        if PageBuild.Visible then waitAndRecenter() else needsRecenter=true end
+        if PageBuild.Visible then
+            waitAndRecenter()
+        else
+            needsRecenter = true
+        end
     end)
+
     PageBuild:GetPropertyChangedSignal("Visible"):Connect(function()
-        if PageBuild.Visible and needsRecenter then needsRecenter=false; waitAndRecenter() end
+        if PageBuild.Visible and needsRecenter then
+            needsRecenter = false
+            waitAndRecenter()
+        end
     end)
 
     -- ══════════════════════════════════════════════
-    -- Handles drag + cámara Follow (sigue al jugador sin rotar)
-    -- Fix móvil: ignorar drag si hay más de 1 dedo activo
+    -- Handles drag logic + RenderStepped (Cámara sin congelarse)
     -- ══════════════════════════════════════════════
     do
-        -- Contar touches activos para ignorar drag con 2 dedos
-        local activeTouches = 0
-        UserInputService.TouchStarted:Connect(function() activeTouches=activeTouches+1 end)
-        UserInputService.TouchEnded:Connect(function()   activeTouches=math.max(0,activeTouches-1) end)
-
-        local function isMultiTouch() return activeTouches > 1 end
-
-        local drag2=false; local origDP=nil
-        -- Para la cámara: guardamos la rotación inicial (LookVector relativo al sujeto)
-        -- y usamos CameraType.Follow para que siga al jugador sin que nosotros la bloqueemos
-        local prevCamType = nil
-
+        local drag2, origDP = false, nil
         Handles.MouseButton1Down:Connect(function()
             if not PageBuild.Visible or locked or not centerPos then return end
-            if isMultiTouch() then return end  -- FIX móvil: ignorar si hay 2 dedos
-            drag2=true; origDP=cDummy.Position
-            -- FIX cámara: cambiar a Follow en lugar de Scriptable
-            -- Follow sigue al personaje pero no rota durante el drag
-            prevCamType = Camera.CameraType
-            Camera.CameraType = Enum.CameraType.Follow
+            drag2 = true
+            origDP = cDummy.Position
         end)
-        Handles.MouseDrag:Connect(function(face,dist)
+        Handles.MouseDrag:Connect(function(face, dist)
             if not PageBuild.Visible or not drag2 or not origDP then return end
-            if isMultiTouch() then return end  -- FIX móvil
-            local st=stepVal(moveStepBox)
-            local d=(st>0)and(math.floor(dist/st+0.5)*st)or dist
-            centerPos=origDP+cDummy.CFrame:VectorToWorldSpace(Vector3.FromNormalId(face))*d
-            cDummy.Position=centerPos; markPreview()
+            local st = stepVal(moveStepBox)
+            local d = (st > 0) and (math.floor(dist / st + 0.5) * st) or dist
+            centerPos = origDP + cDummy.CFrame:VectorToWorldSpace(Vector3.FromNormalId(face)) * d
+            cDummy.Position = centerPos
+            markPreview()
         end)
         Handles.MouseButton1Up:Connect(function()
-            if not drag2 then return end
-            drag2=false; origDP=nil
-            Camera.CameraType = prevCamType or Enum.CameraType.Custom
-            prevCamType = nil
+            if not PageBuild.Visible then return end
+            drag2 = false
         end)
 
-        local arcDrag=false; local arcStartRot=nil; local activeArcAxis=nil
-        local prevCamTypeArc = nil
-
+        local arcDrag, arcStartRot = false, nil
+        local activeArcAxis = nil
         Arc.MouseButton1Down:Connect(function()
             if locked or not centerPos then return end
-            if isMultiTouch() then return end  -- FIX móvil
-            arcDrag=true; arcStartRot=shapeRot
-            prevCamTypeArc = Camera.CameraType
-            Camera.CameraType = Enum.CameraType.Follow
+            arcDrag = true
+            arcStartRot = shapeRot
         end)
-        Arc.MouseDrag:Connect(function(axis,relAngle)
+        Arc.MouseDrag:Connect(function(axis, relAngle)
             if not arcDrag then return end
-            if isMultiTouch() then return end  -- FIX móvil
-            if activeArcAxis~=axis then activeArcAxis=axis end
-            local av=(axis==Enum.Axis.X and Vector3.xAxis)or(axis==Enum.Axis.Y and Vector3.yAxis)or Vector3.zAxis
-            local st=stepVal(rotStepBox)
-            local snapped=(st>0)and math.rad(math.floor(math.deg(relAngle)/st+0.5)*st)or relAngle
-            shapeRot=arcStartRot*CFrame.fromAxisAngle(av,snapped); hasRot=true
-            if centerPos then cDummy.CFrame=CFrame.new(centerPos)*shapeRot end
+            if activeArcAxis ~= axis then activeArcAxis = axis end
+            local av = (axis == Enum.Axis.X and Vector3.xAxis) or (axis == Enum.Axis.Y and Vector3.yAxis) or Vector3.zAxis
+            local st = stepVal(rotStepBox)
+            local snapped = (st > 0) and math.rad(math.floor(math.deg(relAngle) / st + 0.5) * st) or relAngle
+            shapeRot = arcStartRot * CFrame.fromAxisAngle(av, snapped)
+            hasRot = true
+            if centerPos then cDummy.CFrame = CFrame.new(centerPos) * shapeRot end
             markPreview()
         end)
         Arc.MouseButton1Up:Connect(function()
-            if not arcDrag then return end
-            arcDrag=false; arcStartRot=nil; activeArcAxis=nil
-            Camera.CameraType = prevCamTypeArc or Enum.CameraType.Custom
-            prevCamTypeArc = nil
+            arcDrag = false
+            activeArcAxis = nil
         end)
 
-        -- RenderStepped: mantener posición y re-validar handles
+        -- FIX handles: RenderStepped mantiene posición Y re-valida adornee
+        -- (Se removió el bloqueo de cámara Scriptable para que la cámara siga al jugador)
         RunService.RenderStepped:Connect(function()
             if centerPos then
-                local targetCF = hasRot and CFrame.new(centerPos)*shapeRot or CFrame.new(centerPos)
+                local targetCF = hasRot and CFrame.new(centerPos) * shapeRot or CFrame.new(centerPos)
                 cDummy.CFrame     = targetCF
                 ArcAdornee.CFrame = targetCF
             else
-                cDummy.Position     = Vector3.new(0,-9999,0)
-                ArcAdornee.Position = Vector3.new(0,-9999,0)
+                cDummy.Position     = Vector3.new(0, -9999, 0)
+                ArcAdornee.Position = Vector3.new(0, -9999, 0)
             end
-            -- Re-validar handles para evitar desaparición casual
+
+            -- Re-validar visibilidad y adornee en cada frame para prevenir desaparición
             if PageBuild.Visible and centerPos and not locked then
-                if toolMode=="move" then
-                    if Handles.Adornee~=cDummy     then Handles.Adornee=cDummy end
-                    if not Handles.Visible          then Handles.Visible=true end
-                    if Arc.Visible                  then Arc.Visible=false end
-                elseif toolMode=="rotate" then
-                    if Arc.Adornee~=ArcAdornee      then Arc.Adornee=ArcAdornee end
-                    if not Arc.Visible              then Arc.Visible=true end
-                    if Handles.Visible              then Handles.Visible=false end
+                if toolMode == "move" then
+                    if Handles.Adornee ~= cDummy then Handles.Adornee = cDummy end
+                    if not Handles.Visible then Handles.Visible = true end
+                    if Arc.Visible then Arc.Visible = false end
+                elseif toolMode == "rotate" then
+                    if Arc.Adornee ~= ArcAdornee then Arc.Adornee = ArcAdornee end
+                    if not Arc.Visible then Arc.Visible = true end
+                    if Handles.Visible then Handles.Visible = false end
                 end
             elseif not PageBuild.Visible then
-                if Handles.Visible then Handles.Visible=false end
-                if Arc.Visible     then Arc.Visible=false end
+                if Handles.Visible then Handles.Visible = false end
+                if Arc.Visible     then Arc.Visible     = false end
             end
         end)
     end
 
     -- ══════════════════════════════════════════════
-    -- Preview: material y color REALES del bloque
+    -- Preview: renderizar con material y color REALES
     -- ══════════════════════════════════════════════
     local prevPool={}
     local function hidePreview()
@@ -871,8 +961,8 @@ function FormasModule.init(ENV)
             end
             p.Size        = plan[i].size
             p.CFrame      = plan[i].cframe
-            p.Material    = selBlockMat                              -- material real del bloque
-            p.Color       = buildUseColor and selColor or selBlockCol -- color real o personalizado
+            p.Material    = selBlockMat
+            p.Color       = buildUseColor and selColor or selBlockCol
             p.Transparency = previewAlpha
         end
         for i=n+1,#prevPool do
@@ -894,7 +984,9 @@ function FormasModule.init(ENV)
         if minv.X~=math.huge then
             local size=maxv-minv
             cDummy.Size=Vector3.new(math.clamp(size.X,4,200),math.clamp(size.Y,4,200),math.clamp(size.Z,4,200))
-        else cDummy.Size=Vector3.new(4,4,4) end
+        else
+            cDummy.Size=Vector3.new(4,4,4)
+        end
         ArcAdornee.Size=cDummy.Size
         local total,sampled=renderPreview(plan)
         if sampled then setStat(("preview %d parts (muestra)"):format(total),T.warn)
@@ -936,7 +1028,9 @@ function FormasModule.init(ENV)
         return table.remove(blockQueue,1)
     end
     local function setLocked(s)
-        locked=s; for _,b in ipairs(shapeBtns) do b.Active=not s end; updateHandles()
+        locked=s
+        for _,b in ipairs(shapeBtns) do b.Active=not s end
+        updateHandles()
     end
 
     local function iniciarConstruccion()
@@ -957,7 +1051,8 @@ function FormasModule.init(ENV)
             local folder=userFolder(LP.Name); hookFolder(folder)
             local placed=0; local placedBlocks={}
             local function placeOne(seg)
-                local ret=bRF:InvokeServer(blockStr,invItem.Value,nil,seg.cframe,true,seg.cframe,false); local blk
+                local ret=bRF:InvokeServer(blockStr,invItem.Value,nil,seg.cframe,true,seg.cframe,false)
+                local blk
                 if typeof(ret)=="Instance" and ret:IsA("BasePart") then blk=ret else blk=popBlock(3) end
                 if blk and sRF then pcall(function() sRF:InvokeServer(blk,seg.size,seg.cframe) end) end
                 return blk
@@ -965,7 +1060,8 @@ function FormasModule.init(ENV)
             local WORKERS=sharing and 6 or 10; local nextIdx=1; local active=WORKERS
             local function worker()
                 while true do
-                    if buildState.cancel then break end; if invItem.Value<=0 then break end
+                    if buildState.cancel then break end
+                    if invItem.Value<=0 then break end
                     local i=nextIdx; nextIdx=nextIdx+1; if i>total then break end
                     if not folder or folder.Parent==nil then folder=userFolder(LP.Name); hookFolder(folder) end
                     local blk=placeOne(plan[i])
@@ -991,7 +1087,8 @@ function FormasModule.init(ENV)
         if hum then pcall(function() hum:UnequipTools() end) end
         buildState.running=false; buildState.cancel=false; gbRunningRef.value=false
         BtnBuild.Text="Construir"; BtnBuild.BackgroundColor3=T.build; BtnBuild.TextColor3=Color3.new(0,0,0)
-        setLocked(false); if previewOn then markPreview() end
+        setLocked(false)
+        if previewOn then markPreview() end
     end
     BtnBuild.MouseButton1Click:Connect(function()
         if buildState.running then buildState.cancel=true; setStat("cancelando...",T.danger); return end
@@ -1002,7 +1099,10 @@ function FormasModule.init(ENV)
     task.defer(function() task.wait(0.3); refreshShapes() end)
     task.spawn(function()
         task.wait(1)
-        if centerOnClosestZone() then buildUseCZ=true; refreshBuildPlaceBtns() end
+        if centerOnClosestZone() then
+            buildUseCZ = true
+            refreshBuildPlaceBtns()
+        end
     end)
 
     return {
