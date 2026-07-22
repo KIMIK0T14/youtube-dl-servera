@@ -68,27 +68,58 @@ function FormasModule.init(ENV)
     local gbRunningRef = ENV.gbRunning
     local buildState  = {running=false, cancel=false}
 
-    -- ──────────────────────────────────────────────
-    -- Materiales: tabla de visual por nombre de bloque
-    -- ──────────────────────────────────────────────
-    local BLOCK_VISUALS = {
-        ["WoodBlock"]        = {mat=Enum.Material.Wood,        col=Color3.fromRGB(133, 94,  66)},
-        ["PlasticBlock"]     = {mat=Enum.Material.Plastic,     col=Color3.fromRGB(163,162, 165)},
-        ["MetalBlock"]       = {mat=Enum.Material.Metal,       col=Color3.fromRGB(155,155, 155)},
-        ["GlassBlock"]       = {mat=Enum.Material.Glass,       col=Color3.fromRGB(160,230, 255)},
-        ["IceBlock"]         = {mat=Enum.Material.Ice,         col=Color3.fromRGB(160,230, 255)},
-        ["GrassBlock"]       = {mat=Enum.Material.Grass,       col=Color3.fromRGB( 75,151,  75)},
-        ["CobblestoneBlock"] = {mat=Enum.Material.Cobblestone, col=Color3.fromRGB(110,110, 110)},
-        ["ConcreteBlock"]    = {mat=Enum.Material.Concrete,    col=Color3.fromRGB(140,140, 140)},
-        ["NeonBlock"]        = {mat=Enum.Material.Neon,        col=Color3.fromRGB(200,200, 200)},
-    }
-    local function getBlockVisual(name)
-        return BLOCK_VISUALS[name] or {mat=Enum.Material.Plastic, col=Color3.fromRGB(163,162,165)}
-    end
-
-    -- Estado de material/color activo (se actualiza cuando el jugador elige bloque)
+    -- ── Material/color actuales del bloque seleccionado ──
+    -- Se inicializa con plastic y se actualiza leyendo bloques reales del juego
     local selBlockMat = Enum.Material.Plastic
     local selBlockCol = Color3.fromRGB(163,162,165)
+
+    -- FIX #3: flag para re-centrar cuando se vuelva a la pestaña Formas
+    -- (cambio de equipo desde otra pestaña)
+    local needsRecenter = false
+
+    -- ── Leer material y color reales de un bloque del juego ──
+    -- Busca en el workspace un bloque existente del jugador con ese nombre
+    -- para obtener Material y Color reales (como los guarda el JSON en builds)
+    local function readRealBlockVisual(blockName)
+        -- Intenta encontrar un bloque real en el folder del jugador o en la zona
+        local folder = userFolder and userFolder(LP.Name)
+        if folder then
+            for _, part in ipairs(folder:GetChildren()) do
+                if part:IsA("BasePart") and part.Name == blockName then
+                    return part.Material, part.Color
+                end
+            end
+        end
+        -- Si no hay bloques colocados aún, buscar en cualquier lugar del workspace
+        local ws = game:GetService("Workspace")
+        local function searchRecursive(parent, depth)
+            if depth > 4 then return nil, nil end
+            for _, inst in ipairs(parent:GetChildren()) do
+                if inst:IsA("BasePart") and inst.Name == blockName then
+                    return inst.Material, inst.Color
+                end
+                local m, c = searchRecursive(inst, depth + 1)
+                if m then return m, c end
+            end
+            return nil, nil
+        end
+        local mat, col = searchRecursive(ws, 0)
+        if mat then return mat, col end
+        -- Fallback: tabla de referencia como último recurso
+        local FALLBACK = {
+            ["WoodBlock"]        = {mat=Enum.Material.Wood,        col=Color3.fromRGB(133, 94,  66)},
+            ["PlasticBlock"]     = {mat=Enum.Material.Plastic,     col=Color3.fromRGB(163,162, 165)},
+            ["MetalBlock"]       = {mat=Enum.Material.Metal,       col=Color3.fromRGB(155,155, 155)},
+            ["GlassBlock"]       = {mat=Enum.Material.Glass,       col=Color3.fromRGB(160,230, 255)},
+            ["IceBlock"]         = {mat=Enum.Material.Ice,         col=Color3.fromRGB(160,230, 255)},
+            ["GrassBlock"]       = {mat=Enum.Material.Grass,       col=Color3.fromRGB( 75,151,  75)},
+            ["CobblestoneBlock"] = {mat=Enum.Material.Cobblestone, col=Color3.fromRGB(110,110, 110)},
+            ["ConcreteBlock"]    = {mat=Enum.Material.Concrete,    col=Color3.fromRGB(140,140, 140)},
+            ["NeonBlock"]        = {mat=Enum.Material.Neon,        col=Color3.fromRGB(200,200, 200)},
+        }
+        local fb = FALLBACK[blockName] or {mat=Enum.Material.Plastic, col=Color3.fromRGB(163,162,165)}
+        return fb.mat, fb.col
+    end
 
     local generateShape, SHAPES
     do
@@ -318,7 +349,7 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- ORDEN UI: 1) Grid de formas geométricas
+    -- UI ORDEN 1: Grid de formas geométricas
     -- ══════════════════════════════════════════════
     do
         local rGrid = bRow(90)
@@ -337,25 +368,90 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- ORDEN UI: 2) MATERIAL (selector de bloque del inventario)
+    -- UI ORDEN 2: Parámetros numéricos
+    -- ══════════════════════════════════════════════
+    do
+        local rRad=bRow(24); BInput.bRadius=mkNumRow(rRad,"Radio","20",1,0.01)
+        local rCnt=bRow(24,function() local d=SHAPES[selShape]; return d and d.useCount~=false end); BInput.bSteps=mkNumRow(rCnt,"Parts","120",4,4)
+        local rHgt=bRow(24,function() local d=SHAPES[selShape]; return d and d.useHeight==true end); BInput.bSizeY=mkNumRow(rHgt,"Altura","8",1,0.01)
+        local rThk=bRow(24); BInput.bThick=mkNumRow(rThk,"Grosor","1",0.1,0.01)
+        local rPnt=bRow(24,function() local d=SHAPES[selShape]; return d and d.usePoint==true end); BInput.bPunta=mkNumRow(rPnt,"Punta","0",0.1,0)
+    end
+
+    -- ══════════════════════════════════════════════
+    -- UI ORDEN 3: Tapas
+    -- ══════════════════════════════════════════════
+    local capBtnTop, capBtnBot
+    local function refreshCaps()
+        local def=SHAPES[selShape]
+        if def and def.caps=="bottom" then
+            capBtnTop.Visible=false; capBtnBot.Visible=true
+            capBtnBot.Text="▼ Tapa base"; capBtnBot.Size=UDim2.new(0,150,0,22)
+            capBtnBot.AnchorPoint=Vector2.new(0,0.5); capBtnBot.Position=UDim2.new(0,52,0.5,0)
+        else
+            capBtnTop.Visible=true; capBtnBot.Visible=true
+            capBtnTop.Text="▲ Tapa Sup"; capBtnBot.Text="▼ Tapa Inf"
+            capBtnTop.Size=UDim2.new(0,88,0,22); capBtnTop.AnchorPoint=Vector2.new(0,0.5); capBtnTop.Position=UDim2.new(0,52,0.5,0)
+            capBtnBot.Size=UDim2.new(0,88,0,22); capBtnBot.AnchorPoint=Vector2.new(0,0.5); capBtnBot.Position=UDim2.new(0,146,0.5,0)
+        end
+        capBtnTop.BackgroundColor3=capTopOn and T.build or T.btnAlt
+        capBtnBot.BackgroundColor3=capBotOn and T.build or T.btnAlt
+    end
+    do
+        local rCap=bRow(26,function() local d=SHAPES[selShape]; return d and d.caps~=false end)
+        local tapL=lbl(rCap,"Tapas",UDim2.new(0,50,1,0),UDim2.new(0,0,0,0),T.sub); tapL.AnchorPoint=Vector2.new(0,0.5); tapL.Position=UDim2.new(0,0,0.5,0)
+        capBtnTop=btn(rCap,"▲ Tapa Sup",UDim2.new(0,88,0,22),nil,T.btnAlt); capBtnTop.AnchorPoint=Vector2.new(0,0.5); capBtnTop.Position=UDim2.new(0,52,0.5,0)
+        capBtnBot=btn(rCap,"▼ Tapa Inf",UDim2.new(0,88,0,22),nil,T.btnAlt); capBtnBot.AnchorPoint=Vector2.new(0,0.5); capBtnBot.Position=UDim2.new(0,146,0.5,0)
+        capBtnTop.MouseButton1Click:Connect(function() capTopOn=not capTopOn; refreshCaps(); markPreview() end)
+        capBtnBot.MouseButton1Click:Connect(function() capBotOn=not capBotOn; refreshCaps(); markPreview() end)
+    end
+
+    -- ══════════════════════════════════════════════
+    -- UI ORDEN 4: Relleno de tapas
+    -- ══════════════════════════════════════════════
+    local fillStripBtn, fillGridBtn
+    local function refreshFill()
+        fillStripBtn.BackgroundColor3=(capFillMode=="strips") and T.build or T.btnAlt
+        fillGridBtn.BackgroundColor3=(capFillMode=="grid") and T.build or T.btnAlt
+    end
+    do
+        local rFill=bRow(24,function() local d=SHAPES[selShape]; return d and d.fillable==true and(capTopOn or capBotOn) end)
+        lbl(rFill,"Relleno",UDim2.new(0,50,1,0),nil,T.sub)
+        fillStripBtn=btn(rFill,"Tiras",UDim2.new(0,80,0,24),UDim2.new(0,52,0,0),T.build)
+        fillGridBtn=btn(rFill,"Bloques",UDim2.new(0,80,0,24),UDim2.new(0,138,0,0),T.btnAlt)
+        fillStripBtn.MouseButton1Click:Connect(function() capFillMode="strips"; refreshFill(); markPreview() end)
+        fillGridBtn.MouseButton1Click:Connect(function() capFillMode="grid"; refreshFill(); markPreview() end)
+    end
+
+    -- ══════════════════════════════════════════════
+    -- UI ORDEN 5: MATERIAL — aquí, justo después de Tapas/Relleno
+    -- FIX #2: al elegir bloque, buscar el bloque REAL en el workspace
+    -- para obtener Material y Color verdaderos (igual que builds.lua con JSON)
     -- ══════════════════════════════════════════════
     local selBlockNameRef = {value="PlasticBlock"}
     local matPickOv, matPickBtn
+    local mLabelRef  -- referencia al label del botón para actualizar texto
+    local mIconRef   -- referencia al icono del botón
+
+    local function updMatBtn(nm, iconId)
+        selBlockNameRef.value = nm
+        selBlockName = nm
+        if mLabelRef then mLabelRef.Text = nm end
+        if mIconRef  then mIconRef.Image  = iconId or "rbxassetid://12328114032" end
+        -- FIX #2: leer material y color reales del bloque en el workspace
+        task.spawn(function()
+            local mat, col = readRealBlockVisual(nm)
+            selBlockMat = mat
+            selBlockCol = col
+            markPreview()
+        end)
+    end
+
     do
         local rMat=bRow(30); lbl(rMat,"Material",UDim2.new(0,60,1,0),UDim2.new(0,0,0,0),T.sub)
         matPickBtn=mk("TextButton",rMat,{Size=UDim2.new(1,-64,0,26),Position=UDim2.new(0,64,0.5,-13),BackgroundColor3=T.input,BorderSizePixel=0,Font=Enum.Font.GothamSemibold,TextSize=10,Text="",TextColor3=T.text,TextXAlignment=Enum.TextXAlignment.Left}); corner(matPickBtn,6)
-        local mIcon=mk("ImageLabel",matPickBtn,{Size=UDim2.new(0,20,0,20),Position=UDim2.new(0,4,0.5,-10),BackgroundTransparency=1,BorderSizePixel=0})
-        local mLabel=mk("TextLabel",matPickBtn,{Size=UDim2.new(1,-32,1,0),Position=UDim2.new(0,28,0,0),BackgroundTransparency=1,Font=Enum.Font.GothamSemibold,TextSize=10,TextColor3=T.text,TextXAlignment=Enum.TextXAlignment.Left,Text=selBlockNameRef.value})
-
-        -- ── Actualizar material Y color de preview al cambiar bloque ──
-        local function updMatBtn(nm,iconId)
-            selBlockNameRef.value=nm; selBlockName=nm; mLabel.Text=nm
-            mIcon.Image=iconId or "rbxassetid://12328114032"
-            local vis = getBlockVisual(nm)
-            selBlockMat = vis.mat
-            selBlockCol = vis.col
-            markPreview()
-        end
+        mIconRef=mk("ImageLabel",matPickBtn,{Size=UDim2.new(0,20,0,20),Position=UDim2.new(0,4,0.5,-10),BackgroundTransparency=1,BorderSizePixel=0})
+        mLabelRef=mk("TextLabel",matPickBtn,{Size=UDim2.new(1,-32,1,0),Position=UDim2.new(0,28,0,0),BackgroundTransparency=1,Font=Enum.Font.GothamSemibold,TextSize=10,TextColor3=T.text,TextXAlignment=Enum.TextXAlignment.Left,Text=selBlockNameRef.value})
 
         matPickOv=mk("Frame",ENV.Win,{Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.35,BorderSizePixel=0,Visible=false,ZIndex=60})
         mk("TextButton",matPickOv,{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=60,AutoButtonColor=false}).MouseButton1Click:Connect(function() matPickOv.Visible=false end)
@@ -392,7 +488,7 @@ function FormasModule.init(ENV)
             if order==0 then mk("TextLabel",pScroll,{Size=UDim2.new(1,0,0,30),BackgroundTransparency=1,Text="No tienes bloques",TextColor3=T.sub,Font=Enum.Font.Gotham,TextSize=11,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=63}) end
         end
         matPickBtn.MouseButton1Click:Connect(function() popPicker(); matPickOv.Visible=true end)
-        -- Auto-seleccionar primer bloque disponible al iniciar
+        -- Auto-seleccionar primer bloque al iniciar
         task.defer(function()
             task.wait(0.8)
             local df=LP:FindFirstChild("Data"); if not df then return end
@@ -418,7 +514,7 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- ORDEN UI: 3) COLOR
+    -- UI ORDEN 6: COLOR — debajo de Material
     -- ══════════════════════════════════════════════
     local colBtnInd
     do
@@ -436,57 +532,7 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- ORDEN UI: 4) Parámetros numéricos (radio, parts, altura, grosor, punta)
-    -- ══════════════════════════════════════════════
-    do
-        local rRad=bRow(24); BInput.bRadius=mkNumRow(rRad,"Radio","20",1,0.01)
-        local rCnt=bRow(24,function() local d=SHAPES[selShape]; return d and d.useCount~=false end); BInput.bSteps=mkNumRow(rCnt,"Parts","120",4,4)
-        local rHgt=bRow(24,function() local d=SHAPES[selShape]; return d and d.useHeight==true end); BInput.bSizeY=mkNumRow(rHgt,"Altura","8",1,0.01)
-        local rThk=bRow(24); BInput.bThick=mkNumRow(rThk,"Grosor","1",0.1,0.01)
-        local rPnt=bRow(24,function() local d=SHAPES[selShape]; return d and d.usePoint==true end); BInput.bPunta=mkNumRow(rPnt,"Punta","0",0.1,0)
-    end
-
-    local capBtnTop, capBtnBot
-    local function refreshCaps()
-        local def=SHAPES[selShape]
-        if def and def.caps=="bottom" then
-            capBtnTop.Visible=false; capBtnBot.Visible=true
-            capBtnBot.Text="▼ Tapa base"; capBtnBot.Size=UDim2.new(0,150,0,22)
-            capBtnBot.AnchorPoint=Vector2.new(0,0.5); capBtnBot.Position=UDim2.new(0,52,0.5,0)
-        else
-            capBtnTop.Visible=true; capBtnBot.Visible=true
-            capBtnTop.Text="▲ Tapa Sup"; capBtnBot.Text="▼ Tapa Inf"
-            capBtnTop.Size=UDim2.new(0,88,0,22); capBtnTop.AnchorPoint=Vector2.new(0,0.5); capBtnTop.Position=UDim2.new(0,52,0.5,0)
-            capBtnBot.Size=UDim2.new(0,88,0,22); capBtnBot.AnchorPoint=Vector2.new(0,0.5); capBtnBot.Position=UDim2.new(0,146,0.5,0)
-        end
-        capBtnTop.BackgroundColor3=capTopOn and T.build or T.btnAlt
-        capBtnBot.BackgroundColor3=capBotOn and T.build or T.btnAlt
-    end
-    do
-        local rCap=bRow(26,function() local d=SHAPES[selShape]; return d and d.caps~=false end)
-        local tapL=lbl(rCap,"Tapas",UDim2.new(0,50,1,0),UDim2.new(0,0,0,0),T.sub); tapL.AnchorPoint=Vector2.new(0,0.5); tapL.Position=UDim2.new(0,0,0.5,0)
-        capBtnTop=btn(rCap,"▲ Tapa Sup",UDim2.new(0,88,0,22),nil,T.btnAlt); capBtnTop.AnchorPoint=Vector2.new(0,0.5); capBtnTop.Position=UDim2.new(0,52,0.5,0)
-        capBtnBot=btn(rCap,"▼ Tapa Inf",UDim2.new(0,88,0,22),nil,T.btnAlt); capBtnBot.AnchorPoint=Vector2.new(0,0.5); capBtnBot.Position=UDim2.new(0,146,0.5,0)
-        capBtnTop.MouseButton1Click:Connect(function() capTopOn=not capTopOn; refreshCaps(); markPreview() end)
-        capBtnBot.MouseButton1Click:Connect(function() capBotOn=not capBotOn; refreshCaps(); markPreview() end)
-    end
-
-    local fillStripBtn, fillGridBtn
-    local function refreshFill()
-        fillStripBtn.BackgroundColor3=(capFillMode=="strips") and T.build or T.btnAlt
-        fillGridBtn.BackgroundColor3=(capFillMode=="grid") and T.build or T.btnAlt
-    end
-    do
-        local rFill=bRow(24,function() local d=SHAPES[selShape]; return d and d.fillable==true and(capTopOn or capBotOn) end)
-        lbl(rFill,"Relleno",UDim2.new(0,50,1,0),nil,T.sub)
-        fillStripBtn=btn(rFill,"Tiras",UDim2.new(0,80,0,24),UDim2.new(0,52,0,0),T.build)
-        fillGridBtn=btn(rFill,"Bloques",UDim2.new(0,80,0,24),UDim2.new(0,138,0,0),T.btnAlt)
-        fillStripBtn.MouseButton1Click:Connect(function() capFillMode="strips"; refreshFill(); markPreview() end)
-        fillGridBtn.MouseButton1Click:Connect(function() capFillMode="grid"; refreshFill(); markPreview() end)
-    end
-
-    -- ══════════════════════════════════════════════
-    -- Handles y Arc de movimiento/rotación
+    -- Handles y Arc (objetos 3D, no UI)
     -- ══════════════════════════════════════════════
     local PURPLE_GAMER = Color3.fromRGB(170, 0, 255)
     local Handles = mk("Handles", SG, {
@@ -505,26 +551,25 @@ function FormasModule.init(ENV)
     })
     pcall(function() Arc.AlwaysOnTop = true end)
 
-    -- ── FIX: updateHandles también re-asigna Adornee para evitar
-    --         que los handles queden "huérfanos" sin adornee visible ──
+    -- FIX handles: re-asigna Adornee además de Visible para evitar desaparición
     local function updateHandles()
         local can=(centerPos~=nil) and not locked and PageBuild.Visible
         if can and toolMode=="move" then
             Handles.Adornee = cDummy
             Handles.Visible = true
-        else
-            Handles.Visible = false
-        end
-        if can and toolMode=="rotate" then
+            Arc.Visible     = false
+        elseif can and toolMode=="rotate" then
             Arc.Adornee = ArcAdornee
             Arc.Visible = true
+            Handles.Visible = false
         else
-            Arc.Visible = false
+            Handles.Visible = false
+            Arc.Visible     = false
         end
     end
 
     -- ══════════════════════════════════════════════
-    -- ORDEN UI: 5) Selector de herramienta Mover / Rotar
+    -- UI ORDEN 7: Selector Mover / Rotar
     -- ══════════════════════════════════════════════
     local bMove, bRotT, moveStepBox, rotStepBox
     local function refreshTool()
@@ -542,6 +587,9 @@ function FormasModule.init(ENV)
         bRotT.MouseButton1Click:Connect(function() toolMode="rotate"; refreshTool() end)
     end
 
+    -- ══════════════════════════════════════════════
+    -- UI ORDEN 8: Centro zona / Sel. Posición + Vista previa + Construir
+    -- ══════════════════════════════════════════════
     local selBox = mk("SelectionBox", SG, {Color3=T.accent, LineThickness=0.04})
     local BtnBuild, StatLbl, BtnPrev
     local buildUseCZ = true
@@ -559,18 +607,20 @@ function FormasModule.init(ENV)
         return Vector3.zero
     end
 
-    -- ── Helper: centrar en zona más cercana y actualizar todo ──
+    -- ── Helper central: centrar en zona más cercana ──
     local function centerOnClosestZone()
         local z = closestZone(myRefPos())
         if z then
-            centerPos = getZoneSurface(z)
-            cDummy.CFrame = CFrame.new(centerPos)
-            shapeRot = CFrame.identity
-            hasRot   = false
+            centerPos    = getZoneSurface(z)
+            shapeRot     = CFrame.identity
+            hasRot       = false
+            cDummy.CFrame     = CFrame.new(centerPos)
             ArcAdornee.CFrame = CFrame.new(centerPos)
             updateHandles()
             markPreview()
+            return true
         end
+        return false
     end
 
     do
@@ -620,41 +670,65 @@ function FormasModule.init(ENV)
     local function setStat(t,col) StatLbl.Text=t; StatLbl.TextColor3=col or T.text end
 
     -- ══════════════════════════════════════════════
-    -- FIX cambio de equipo: esperar a que el personaje
-    -- reaparezca en la nueva zona antes de centrar
+    -- FIX #3 COMPLETO: cambio de equipo desde CUALQUIER pestaña
     -- ══════════════════════════════════════════════
-    LP:GetPropertyChangedSignal("Team"):Connect(function()
-        if not PageBuild.Visible then return end
-        -- Esperar a que el character reaparezca y myRefPos() sea válido
-        local function waitAndCenter()
-            -- Intentar hasta 10 veces con 0.5s entre intentos
-            for _ = 1, 10 do
-                task.wait(0.5)
-                local ref = myRefPos()
-                -- Solo centrar si la posición parece válida (no en el limbo)
-                if ref and ref.Y > -100 then
-                    centerOnClosestZone()
-                    buildUseCZ = true
-                    refreshBuildPlaceBtns()
-                    return
+
+    -- Función que espera posición válida y centra
+    local function waitAndRecenter()
+        task.spawn(function()
+            for _ = 1, 20 do
+                task.wait(0.3)
+                local ok, ref = pcall(myRefPos)
+                if ok and ref and ref.Y > -100 then
+                    local didCenter = centerOnClosestZone()
+                    if didCenter then
+                        buildUseCZ = true
+                        refreshBuildPlaceBtns()
+                        needsRecenter = false
+                        return
+                    end
                 end
             end
+            -- Si no logró centrar, dejar el flag para cuando abra la pestaña
+            needsRecenter = true
+        end)
+    end
+
+    -- Cuando cambia de equipo: centrar si estamos en Formas, o marcar flag
+    LP:GetPropertyChangedSignal("Team"):Connect(function()
+        if PageBuild.Visible then
+            waitAndRecenter()
+        else
+            -- Estamos en otra pestaña (ej: Builds), guardar flag
+            needsRecenter = true
         end
-        task.spawn(waitAndCenter)
     end)
 
-    -- Detectar reaparición del personaje para re-centrar
+    -- Cuando el personaje reaparece: misma lógica
     LP.CharacterAdded:Connect(function(char)
-        if not PageBuild.Visible then return end
-        -- Esperar a que el personaje esté completamente cargado
         local hrp = char:WaitForChild("HumanoidRootPart", 8)
         if not hrp then return end
-        task.wait(0.3)
-        centerOnClosestZone()
-        buildUseCZ = true
-        refreshBuildPlaceBtns()
+        task.wait(0.2)
+        if PageBuild.Visible then
+            waitAndRecenter()
+        else
+            needsRecenter = true
+        end
     end)
 
+    -- Detectar cuando la pestaña Formas se vuelve visible
+    -- (el módulo padre debe llamar markPreview o similar al cambiar de tab,
+    --  pero también lo detectamos por Visible changed)
+    PageBuild:GetPropertyChangedSignal("Visible"):Connect(function()
+        if PageBuild.Visible and needsRecenter then
+            needsRecenter = false
+            waitAndRecenter()
+        end
+    end)
+
+    -- ══════════════════════════════════════════════
+    -- Handles drag logic + RenderStepped
+    -- ══════════════════════════════════════════════
     do
         local drag2,savedCam,origDP=false,nil,nil
         Handles.MouseButton1Down:Connect(function()
@@ -696,43 +770,40 @@ function FormasModule.init(ENV)
             Camera.CameraType=Enum.CameraType.Custom
         end)
 
-        -- ── FIX handles: RenderStepped mantiene posición Y re-valida
-        --    visibilidad para evitar que desaparezcan por pérdida de adornee ──
+        -- FIX handles: RenderStepped mantiene posición Y re-valida adornee
         RunService.RenderStepped:Connect(function()
             if drag2 and savedCam then Camera.CFrame=savedCam end
             if arcDrag and arcSavedCam then Camera.CFrame=arcSavedCam end
 
             if centerPos then
                 local targetCF = hasRot and CFrame.new(centerPos)*shapeRot or CFrame.new(centerPos)
-                cDummy.CFrame = targetCF
+                cDummy.CFrame     = targetCF
                 ArcAdornee.CFrame = targetCF
             else
-                cDummy.Position    = Vector3.new(0,-9999,0)
+                cDummy.Position     = Vector3.new(0,-9999,0)
                 ArcAdornee.Position = Vector3.new(0,-9999,0)
             end
 
-            -- Re-validar que los handles sigan apuntando al adornee correcto
-            -- (evita el bug de desaparición casual)
+            -- Re-validar visibilidad y adornee en cada frame para prevenir desaparición
             if PageBuild.Visible and centerPos and not locked then
                 if toolMode=="move" then
-                    if not Handles.Visible or Handles.Adornee ~= cDummy then
-                        Handles.Adornee = cDummy
-                        Handles.Visible = true
-                    end
+                    if Handles.Adornee ~= cDummy then Handles.Adornee = cDummy end
+                    if not Handles.Visible then Handles.Visible = true end
                     if Arc.Visible then Arc.Visible = false end
                 elseif toolMode=="rotate" then
-                    if not Arc.Visible or Arc.Adornee ~= ArcAdornee then
-                        Arc.Adornee = ArcAdornee
-                        Arc.Visible = true
-                    end
+                    if Arc.Adornee ~= ArcAdornee then Arc.Adornee = ArcAdornee end
+                    if not Arc.Visible then Arc.Visible = true end
                     if Handles.Visible then Handles.Visible = false end
                 end
+            elseif not PageBuild.Visible then
+                if Handles.Visible then Handles.Visible = false end
+                if Arc.Visible     then Arc.Visible     = false end
             end
         end)
     end
 
     -- ══════════════════════════════════════════════
-    -- Preview: renderizar con material y color reales
+    -- Preview: renderizar con material y color REALES
     -- ══════════════════════════════════════════════
     local prevPool={}
     local function hidePreview()
@@ -749,11 +820,10 @@ function FormasModule.init(ENV)
                 p=mk("Part",prevF,{Anchored=true,CanCollide=false,CanQuery=false,CanTouch=false,CastShadow=false})
                 prevPool[n]=p
             end
-            p.Size    = plan[i].size
-            p.CFrame  = plan[i].cframe
-            -- ── FIX: usar material real del bloque seleccionado ──
+            p.Size        = plan[i].size
+            p.CFrame      = plan[i].cframe
+            -- FIX #2: Material y Color reales del bloque seleccionado
             p.Material    = selBlockMat
-            -- ── FIX: usar color real del bloque, o color personalizado si está ON ──
             p.Color       = buildUseColor and selColor or selBlockCol
             p.Transparency = previewAlpha
         end
@@ -889,12 +959,12 @@ function FormasModule.init(ENV)
 
     refreshShapes(); refreshCaps(); refreshFill(); refreshTool(); refreshBuildRows(); onShapeChange()
     task.defer(function() task.wait(0.3); refreshShapes() end)
-    -- Centrar en zona al iniciar
     task.spawn(function()
         task.wait(1)
-        centerOnClosestZone()
-        buildUseCZ = true
-        refreshBuildPlaceBtns()
+        if centerOnClosestZone() then
+            buildUseCZ = true
+            refreshBuildPlaceBtns()
+        end
     end)
 
     return {
