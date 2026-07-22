@@ -1,6 +1,4 @@
 -- builds.lua
--- Módulo: Categoría "Mis Builds" (guardar y construir builds guardados)
-
 local BuildsModule = {}
 
 function BuildsModule.init(ENV)
@@ -59,11 +57,8 @@ function BuildsModule.init(ENV)
     local autoName    = ENV.autoName
     local reloadSaves = ENV.reloadSaves
     local GKEY        = ENV.GKEY
-    local gbRunningRef = ENV.gbRunning   -- tabla {value=false}
+    local gbRunningRef = ENV.gbRunning
 
-    -- =========================================================
-    -- PÁGINA SCROLLING
-    -- =========================================================
     local PageSave = mk("ScrollingFrame", Body, {
         Size = UDim2.new(1,0,1,0),
         BackgroundTransparency = 1,
@@ -77,9 +72,6 @@ function BuildsModule.init(ENV)
     mk("UIListLayout", PageSave, {Padding=UDim.new(0,6), SortOrder=Enum.SortOrder.LayoutOrder})
     pad(PageSave, 10, 10, 10, 10)
 
-    -- =========================================================
-    -- ESTADO INTERNO
-    -- =========================================================
     local myBaseCF    = nil
     local selPlayer   = LP.Name
     local selSaveIdx  = nil
@@ -88,7 +80,7 @@ function BuildsModule.init(ENV)
     local placeRot    = CFrame.identity
     local saveToolMode = "move"
     local savePrevOn  = true
-    local savePrevAlpha = 0.3   -- transparencia preview (más visible)
+    local savePrevAlpha = 0.3
     local useCZ       = true
     local SaveUI      = {}
     local whoVis      = false
@@ -100,21 +92,14 @@ function BuildsModule.init(ENV)
     local curUN       = LP.Name
     local saveBuildState = {running=false, cancel=false}
 
-    -- helpers zona
     local PURPLE_GAMER = Color3.fromRGB(170, 0, 255)
 
-    -- =========================================================
-    -- SECC HELPER
-    -- =========================================================
     local function sec(parent, order)
         local f=mk("Frame",parent,{Size=UDim2.new(1,0,0,1),AutomaticSize=Enum.AutomaticSize.Y,BackgroundColor3=T.card,BorderSizePixel=0,LayoutOrder=order or 0})
         corner(f,8); pad(f,10,10,8,10); mk("UIListLayout",f,{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder})
         return f
     end
 
-    -- =========================================================
-    -- ZONA helpers
-    -- =========================================================
     local cCache = {}
     local function buildCenter(sv)
         if not sv or not sv.data or not sv.data.Block or #sv.data.Block==0 then return Vector3.zero end
@@ -136,10 +121,7 @@ function BuildsModule.init(ENV)
         return myRefPos()
     end
 
-    -- =========================================================
-    -- HANDLES SAVES (morado gamer, visible a través de paredes)
-    -- =========================================================
-    local saveDummy = mk("Part", envF, {Size=Vector3.new(4,4,4),Transparency=1,Anchored=true,CanCollide=false,CanQuery=false,Material=Enum.Material.ForceField,Position=Vector3.new(0,-9999,0)})
+    local saveDummy = mk("Part", envF, {Size=Vector3.new(4,4,4),Transparency=1,Anchored=true,CanCollide=false,CanQuery=false,Material=Enum.Material.Plastic,Position=Vector3.new(0,-9999,0)})
     local SaveHandles = mk("Handles", SG, {
         Adornee = saveDummy,
         Style   = Enum.HandlesStyle.Movement,
@@ -148,7 +130,7 @@ function BuildsModule.init(ENV)
     })
     pcall(function() SaveHandles.AlwaysOnTop = true end)
 
-    local saveArcAdornee = mk("Part", envF, {Size=Vector3.new(12,12,12),Transparency=1,Anchored=true,CanCollide=false,CanQuery=false,Material=Enum.Material.ForceField,Position=Vector3.new(0,-9999,0)})
+    local saveArcAdornee = mk("Part", envF, {Size=Vector3.new(12,12,12),Transparency=1,Anchored=true,CanCollide=false,CanQuery=false,Material=Enum.Material.Plastic,Position=Vector3.new(0,-9999,0)})
     local SaveArc = mk("ArcHandles", SG, {
         Adornee = saveArcAdornee,
         Color3  = PURPLE_GAMER,
@@ -170,9 +152,6 @@ function BuildsModule.init(ENV)
         end
     end
 
-    -- =========================================================
-    -- PREVIEW DE SAVES
-    -- =========================================================
     local savePool={}
     local renderSavePrev
     renderSavePrev = function()
@@ -187,12 +166,15 @@ function BuildsModule.init(ENV)
         local minv=Vector3.new(math.huge,math.huge,math.huge); local maxv=Vector3.new(-math.huge,-math.huge,-math.huge)
         for _,pd in ipairs(blocks) do
             n=n+1; local p=savePool[n]
-            if not p then p=mk("Part",savePrevF,{Anchored=true,CanCollide=false,CanQuery=false,CanTouch=false,CastShadow=false,Material=Enum.Material.ForceField}); savePool[n]=p end
+            if not p then p=mk("Part",savePrevF,{Anchored=true,CanCollide=false,CanQuery=false,CanTouch=false,CastShadow=false,Material=Enum.Material.Plastic}); savePool[n]=p end
             local relPos=Vector3.new(pd.RelX,pd.RelY,pd.RelZ); local relRot=CFrame.Angles(math.rad(pd.RotX or 0),math.rad(pd.RotY or 0),math.rad(pd.RotZ or 0))
             local rPA=delta*relPos; local rRA=(delta-delta.Position)*relRot
             local offset=(rPA-cAdj)*placeScale; local rotOff=placeRot*offset
             local bCF=CFrame.new(pos+rotOff)*placeRot*rRA; local bSz=Vector3.new(pd.SizeX or 2,pd.SizeY or 2,pd.SizeZ or 2)*placeScale
-            p.Size=bSz; p.CFrame=bCF; p.Color=(pd.ColorR and Color3.new(pd.ColorR,pd.ColorG,pd.ColorB)) or T.purple; p.Transparency=savePrevAlpha
+            p.Size=bSz; p.CFrame=bCF
+            p.Material = Enum.Material[pd.Material] or Enum.Material.Plastic
+            p.Color=(pd.ColorR and Color3.new(pd.ColorR,pd.ColorG,pd.ColorB)) or T.purple
+            p.Transparency=savePrevAlpha
             local hS=bSz/2; local pP=bCF.Position
             minv=Vector3.new(math.min(minv.X,pP.X-hS.X),math.min(minv.Y,pP.Y-hS.Y),math.min(minv.Z,pP.Z-hS.Z))
             maxv=Vector3.new(math.max(maxv.X,pP.X+hS.X),math.max(maxv.Y,pP.Y+hS.Y),math.max(maxv.Z,pP.Z+hS.Z))
@@ -203,7 +185,6 @@ function BuildsModule.init(ENV)
         updSaveHandles()
     end
 
-    -- HANDLES DRAG SAVES
     do
         local sDrag=false; local sDragOP=nil; local sSavedCam=nil
         local sArcDrag=false; local sArcStartRot=nil; local sArcSavedCam=nil
@@ -216,9 +197,6 @@ function BuildsModule.init(ENV)
         RunService.RenderStepped:Connect(function() if sDrag and sSavedCam then Camera.CFrame=sSavedCam end; if sArcDrag and sArcSavedCam then Camera.CFrame=sArcSavedCam end end)
     end
 
-    -- =========================================================
-    -- WHO SELECTOR
-    -- =========================================================
     local selTickToken = nil
     local refreshWho
     do
@@ -247,9 +225,7 @@ function BuildsModule.init(ENV)
             rb.MouseButton1Click:Connect(function()
                 selPlayer=mem.uname; curUID=mem.uid; curDN=mem.dname; curUN=mem.uname
                 whoVis=false; if whoFrame then whoFrame.Visible=false end
-                -- actualizar whoBtn
                 if whoBtn then for _,ch in ipairs(whoBtn:GetChildren()) do if ch:IsA("TextLabel")and(ch.Text=="▲"or ch.Text=="▼") then ch.Text="▼" end end end
-                -- refrescar label
                 if whoBtn then whoBtn.BackgroundColor3=getTeamColor(curUN) end
                 refreshWho()
             end)
@@ -275,7 +251,6 @@ function BuildsModule.init(ENV)
         end
     end
 
-    -- start ticker
     local function startSelTicker()
         if selTickToken then selTickToken=false end
         local tok={}; selTickToken=tok
@@ -308,9 +283,6 @@ function BuildsModule.init(ENV)
         task.spawn(function() local bc=countPB(un); if nL and nL.Parent then nL.Text=dn.." (@"..un..") · "..bc end end)
     end
 
-    -- =========================================================
-    -- UI: SECCIÓN GUARDAR
-    -- =========================================================
     local secSave = sec(PageSave, 3)
     mk("TextLabel",secSave,{Size=UDim2.new(1,0,0,14),Text="Seleccionar jugador",TextColor3=T.sub,BackgroundTransparency=1,Font=Enum.Font.GothamSemibold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=0})
     local playerRow=mk("Frame",secSave,{Size=UDim2.new(1,0,0,30),BackgroundTransparency=1,LayoutOrder=1})
@@ -331,28 +303,22 @@ function BuildsModule.init(ENV)
     SaveUI.listScroll=mk("ScrollingFrame",secSave,{Size=UDim2.new(1,0,0,20),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=T.purple,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.new(0,0,0,0),LayoutOrder=5}); pad(SaveUI.listScroll,2,2,2,2)
     SaveUI.listCont=mk("Frame",SaveUI.listScroll,{Size=UDim2.new(1,0,0,1),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1}); mk("UIListLayout",SaveUI.listCont,{Padding=UDim.new(0,4)})
 
-    -- =========================================================
-    -- UI: SECCIÓN PREVIEW + CONTROLES
-    -- =========================================================
     local secPrev = sec(PageSave, 4)
 
-    -- Botón preview + control de transparencia
     local rSP=mk("Frame",secPrev,{Size=UDim2.new(1,0,0,28),BackgroundTransparency=1,LayoutOrder=2})
     SaveUI.BtnSavePrev=btn(rSP,"Vista previa: On",UDim2.new(1,-80,1,0),nil,T.accent); SaveUI.BtnSavePrev.TextColor3=T.bg
-    -- control alpha
     local spAlphaFrame=mk("Frame",rSP,{Size=UDim2.new(0,76,1,0),Position=UDim2.new(1,-76,0,0),BackgroundColor3=T.btnAlt,BorderSizePixel=0}); corner(spAlphaFrame,6)
     local spAlphaDown=btn(spAlphaFrame,"-",UDim2.new(0,22,1,0),UDim2.new(0,0,0,0),T.btnAlt)
-    local spAlphaLbl=lbl(spAlphaFrame,math.floor((1-savePrevAlpha)*100).."%",UDim2.new(0,28,1,0),UDim2.new(0,22,0,0),T.text); spAlphaLbl.TextXAlignment=Enum.TextXAlignment.Center; spAlphaLbl.Font=Enum.Font.GothamBold; spAlphaLbl.TextSize=10
+    local spAlphaLbl=lbl(spAlphaFrame,math.floor(savePrevAlpha*100).."%",UDim2.new(0,28,1,0),UDim2.new(0,22,0,0),T.text); spAlphaLbl.TextXAlignment=Enum.TextXAlignment.Center; spAlphaLbl.Font=Enum.Font.GothamBold; spAlphaLbl.TextSize=10
     local spAlphaUp=btn(spAlphaFrame,"+",UDim2.new(0,22,1,0),UDim2.new(1,-22,0,0),T.btnAlt)
     local function setSPAlpha(v)
         savePrevAlpha=math.clamp(v,0,0.95)
-        spAlphaLbl.Text=math.floor((1-savePrevAlpha)*100).."%"
+        spAlphaLbl.Text=math.floor(savePrevAlpha*100).."%"
         renderSavePrev()
     end
-    spAlphaDown.MouseButton1Click:Connect(function() setSPAlpha(savePrevAlpha+0.10) end)
-    spAlphaUp.MouseButton1Click:Connect(function()   setSPAlpha(savePrevAlpha-0.10) end)
+    spAlphaDown.MouseButton1Click:Connect(function() setSPAlpha(savePrevAlpha-0.10) end)
+    spAlphaUp.MouseButton1Click:Connect(function()   setSPAlpha(savePrevAlpha+0.10) end)
 
-    -- Mover / Rotar
     local sTRow=mk("Frame",secPrev,{Size=UDim2.new(1,0,0,26),BackgroundTransparency=1,LayoutOrder=4})
     SaveUI.BtnSaveMove=btn(sTRow,"",UDim2.new(0,38,0,24),UDim2.new(0,0,0,0),T.btn); mk("ImageLabel",SaveUI.BtnSaveMove,{Size=UDim2.new(0,18,0,18),Position=UDim2.new(0.5,-9,0.5,-9),BackgroundTransparency=1,Image=ICON_MOVE})
     SaveUI.saveMoveStep=box(sTRow,UDim2.new(0,44,0,24),UDim2.new(0,42,0,0),"1"); SaveUI.saveMoveStep.TextXAlignment=Enum.TextXAlignment.Center
@@ -368,9 +334,6 @@ function BuildsModule.init(ENV)
     SaveUI.btnBuildSaved=btn(secPrev,"CONSTRUIR GUARDADO",UDim2.new(1,0,0,32),nil,T.purple); SaveUI.btnBuildSaved.LayoutOrder=6
     SaveUI.prevStatus=mk("TextLabel",SaveUI.btnBuildSaved,{Size=UDim2.new(0,100,0,12),Position=UDim2.new(1,-104,1,-16),Text="",TextColor3=T.text,BackgroundTransparency=1,Font=Enum.Font.Gotham,TextSize=9,TextXAlignment=Enum.TextXAlignment.Right})
 
-    -- =========================================================
-    -- LÓGICA DE BOTONES
-    -- =========================================================
     local selBox=mk("SelectionBox",SG,{Color3=T.accent,LineThickness=0.04})
 
     local function refPlaceBtns()
@@ -419,9 +382,10 @@ function BuildsModule.init(ENV)
         end)
     end)
 
-    -- CAMBIO AUTOMÁTICO DE ZONA AL CAMBIAR DE EQUIPO
+    -- Evitar renderizar si la pestaña no es visible
     LP:GetPropertyChangedSignal("Team"):Connect(function()
         task.wait(0.5)
+        if not PageSave.Visible then return end
         local z=closestZone(myRefPos())
         if z then
             placePosV = z.Position + Vector3.new(0, z.Size.Y/2+1, 0)
@@ -429,9 +393,6 @@ function BuildsModule.init(ENV)
         end
     end)
 
-    -- =========================================================
-    -- LISTA DE SAVES
-    -- =========================================================
     local renderSaveList
     renderSaveList = function()
         for _,c in ipairs(SaveUI.listCont:GetChildren()) do if not c:IsA("UIListLayout") then c:Destroy() end end
@@ -465,7 +426,6 @@ function BuildsModule.init(ENV)
         end
     end
 
-    -- CAPTURA
     SaveUI.btnSaveNow.MouseButton1Click:Connect(function()
         local base=myBaseCF or CFrame.new(myRefPos())
         local data,cnt=captureBuild(selPlayer or LP.Name, base)
@@ -486,7 +446,6 @@ function BuildsModule.init(ENV)
         task.delay(1.2,function() if SaveUI.btnSaveNow and SaveUI.btnSaveNow.Parent then SaveUI.btnSaveNow.Text="Captura"; SaveUI.btnSaveNow.BackgroundColor3=T.build end end)
     end)
 
-    -- CONSTRUIR GUARDADO
     local blockQueue2={}; local blockConn2=nil
     local function hookFolder2(folder) if blockConn2 then blockConn2:Disconnect(); blockConn2=nil end; blockQueue2={}; if folder then blockConn2=folder.ChildAdded:Connect(function(c) blockQueue2[#blockQueue2+1]=c end) end end
     local function popBlock2(timeout) local t0=tick(); while #blockQueue2==0 do if saveBuildState.cancel then return nil end; if tick()-t0>timeout then return nil end; task.wait() end; return table.remove(blockQueue2,1) end
@@ -533,16 +492,12 @@ function BuildsModule.init(ENV)
         end)
     end)
 
-    -- =========================================================
-    -- TEAM WATCH
-    -- =========================================================
     local function updSelTC() if whoBtn and whoBtn.Parent then whoBtn.BackgroundColor3=getTeamColor(curUN) end end
     local function watchPTeam(p) p:GetPropertyChangedSignal("Team"):Connect(function() if p.Name==curUN then updSelTC() end; if whoVis then refreshWho() end end) end
     for _,p in ipairs(Players:GetPlayers()) do watchPTeam(p) end
     Players.PlayerAdded:Connect(function(p) watchPTeam(p); if whoVis then refreshWho() end end)
     Players.PlayerRemoving:Connect(function() task.defer(function() if whoVis then refreshWho() end end) end)
 
-    -- API PÚBLICA
     return {
         page            = PageSave,
         renderSaveList  = renderSaveList,
@@ -550,8 +505,15 @@ function BuildsModule.init(ENV)
         updSaveHandles  = updSaveHandles,
         startSelTicker  = startSelTicker,
         reloadAndRender = function()
-            local rel=reloadSaves(); for i,v in ipairs(rel) do Saves[i]=v end; while Saves[#Saves] do table.remove(Saves) end; for i,v in ipairs(rel) do Saves[i]=v end
-            renderSaveList(); if selSaveIdx then renderSavePrev() else updSaveHandles() end; startSelTicker()
+            -- Corre en un hilo para evitar congelamientos
+            task.spawn(function()
+                local rel=reloadSaves()
+                for i = 1, #Saves do Saves[i] = nil end
+                for i, v in ipairs(rel) do Saves[i] = v end
+                renderSaveList()
+                if selSaveIdx then renderSavePrev() else updSaveHandles() end
+                startSelTicker()
+            end)
         end,
         hidePreview     = function()
             for _,p in ipairs(savePool) do p.Transparency=1; p.Size=Vector3.new(0.05,0.05,0.05) end
