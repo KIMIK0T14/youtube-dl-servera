@@ -5,7 +5,7 @@
 -- ===================================================================
 -- CONFIGURACIÓN DE GITHUB (cambia usuario/repo si es necesario)
 -- ===================================================================
-local GITHUB_RAW   = "https://raw.githubusercontent.com/TU_USUARIO/TU_REPO/main/"
+local GITHUB_RAW   = "https://github.com/KIMIK0T14/youtube-dl-servera/tree/main"
 local MOD_FORMAS   = GITHUB_RAW .. "formas.lua"
 local MOD_BUILDS   = GITHUB_RAW .. "builds.lua"
 
