@@ -66,7 +66,7 @@ function FormasModule.init(ENV)
     local selShape    = 1
     local centerPos   = nil
     local previewOn   = true
-    local previewAlpha = 0.55   -- transparencia inicial
+    local previewAlpha = 0.55
     local locked      = false
     local toolMode    = "move"
     local shapeRot    = CFrame.identity
@@ -77,7 +77,7 @@ function FormasModule.init(ENV)
     local buildUseColor = false
     local selColor    = Color3.fromRGB(255,255,255)
     local selBlockName = "PlasticBlock"
-    local gbRunningRef = ENV.gbRunning   -- tabla compartida {value=false}
+    local gbRunningRef = ENV.gbRunning
     local buildState  = {running=false, cancel=false}
 
     -- =========================================================
@@ -326,7 +326,6 @@ function FormasModule.init(ENV)
     end
 
     local colBtnInd
-    -- COLOR
     do
         local rColor = bRow(28)
         lbl(rColor, "Color", UDim2.new(0,46,1,0), UDim2.new(0,0,0,0), T.sub)
@@ -341,7 +340,6 @@ function FormasModule.init(ENV)
         end)
     end
 
-    -- Grid de formas (90px)
     do
         local rGrid = bRow(90)
         mk("UIGridLayout", rGrid, {CellSize=UDim2.new(0,38,0,38),CellPadding=UDim2.new(0,6,0,6),SortOrder=Enum.SortOrder.LayoutOrder})
@@ -358,7 +356,6 @@ function FormasModule.init(ENV)
         end
     end
 
-    -- PARÁMETROS
     do
         local rRad=bRow(24); BInput.bRadius=mkNumRow(rRad,"Radio","20",1,0.01)
         local rCnt=bRow(24,function() local d=SHAPES[selShape]; return d and d.useCount~=false end); BInput.bSteps=mkNumRow(rCnt,"Parts","120",4,4)
@@ -367,7 +364,6 @@ function FormasModule.init(ENV)
         local rPnt=bRow(24,function() local d=SHAPES[selShape]; return d and d.usePoint==true end); BInput.bPunta=mkNumRow(rPnt,"Punta","0",0.1,0)
     end
 
-    -- TAPAS
     local capBtnTop, capBtnBot
     local function refreshCaps()
         local def=SHAPES[selShape]
@@ -393,7 +389,6 @@ function FormasModule.init(ENV)
         capBtnBot.MouseButton1Click:Connect(function() capBotOn=not capBotOn; refreshCaps(); markPreview() end)
     end
 
-    -- RELLENO
     local fillStripBtn, fillGridBtn
     local function refreshFill()
         fillStripBtn.BackgroundColor3=(capFillMode=="strips") and T.build or T.btnAlt
@@ -408,7 +403,6 @@ function FormasModule.init(ENV)
         fillGridBtn.MouseButton1Click:Connect(function() capFillMode="grid"; refreshFill(); markPreview() end)
     end
 
-    -- MATERIAL
     local selBlockNameRef = {value="PlasticBlock"}
     local matPickOv, matPickBtn
     do
@@ -440,16 +434,14 @@ function FormasModule.init(ENV)
         end)
     end
 
-    -- HANDLES 3D (morado gamer, visible through walls)
+    -- HANDLES 3D
     local PURPLE_GAMER = Color3.fromRGB(170, 0, 255)
     local Handles = mk("Handles", SG, {
         Adornee    = cDummy,
         Style      = Enum.HandlesStyle.Movement,
         Color3     = PURPLE_GAMER,
         Visible    = false,
-        ZIndex     = 10,
     })
-    -- Siempre visible a través de paredes: AlwaysOnTop
     pcall(function() Handles.AlwaysOnTop = true end)
 
     local ArcAdornee = mk("Part", envF, {Size=Vector3.new(12,12,12),Transparency=1,Anchored=true,CanCollide=false,CanQuery=false,Material=Enum.Material.ForceField,Position=Vector3.new(0,-9999,0)})
@@ -466,7 +458,6 @@ function FormasModule.init(ENV)
         Arc.Visible     = can and toolMode=="rotate"
     end
 
-    -- HERRAMIENTA: MOVER / ROTAR
     local bMove, bRotT, moveStepBox, rotStepBox
     local function refreshTool()
         bMove.BackgroundColor3  = (toolMode=="move")   and T.btn or T.btnAlt
@@ -483,7 +474,6 @@ function FormasModule.init(ENV)
         bRotT.MouseButton1Click:Connect(function() toolMode="rotate"; refreshTool() end)
     end
 
-    -- POSICIÓN DEL CENTRO: botones Centro Zona / Sel. Posición
     local selBox = mk("SelectionBox", SG, {Color3=T.accent, LineThickness=0.04})
     local BtnBuild, StatLbl, BtnPrev
     local buildUseCZ = true
@@ -494,9 +484,7 @@ function FormasModule.init(ENV)
         BtnBuildSel.BackgroundColor3=(not buildUseCZ)and T.accent or T.btnAlt; BtnBuildSel.TextColor3=(not buildUseCZ)and T.bg or T.text
     end
 
-    -- Posición de la zona: ARRIBA (encima) de la superficie
     local function getZoneSurface(z)
-        -- z es la parte de zona
         if z and z:IsA("BasePart") then
             return z.Position + Vector3.new(0, z.Size.Y/2 + 0.5, 0)
         end
@@ -530,10 +518,8 @@ function FormasModule.init(ENV)
             end)
         end)
 
-        -- Preview con control de transparencia
         local rPrev=bRow(32)
         BtnPrev=btn(rPrev,"Vista previa: On",UDim2.new(1,-80,1,0),nil,T.accent); BtnPrev.TextColor3=T.bg
-        -- control de transparencia dentro del botón de preview
         local prevAlphaFrame=mk("Frame",rPrev,{Size=UDim2.new(0,76,1,0),Position=UDim2.new(1,-76,0,0),BackgroundColor3=T.btnAlt,BorderSizePixel=0}); corner(prevAlphaFrame,6)
         local pAlphaDown=btn(prevAlphaFrame,"-",UDim2.new(0,22,1,0),UDim2.new(0,0,0,0),T.btnAlt)
         local pAlphaLbl=lbl(prevAlphaFrame,math.floor((1-previewAlpha)*100).."%",UDim2.new(0,28,1,0),UDim2.new(0,22,0,0),T.text); pAlphaLbl.TextXAlignment=Enum.TextXAlignment.Center; pAlphaLbl.Font=Enum.Font.GothamBold; pAlphaLbl.TextSize=10
@@ -543,7 +529,7 @@ function FormasModule.init(ENV)
             pAlphaLbl.Text=math.floor((1-previewAlpha)*100).."%"
             markPreview()
         end
-        pAlphaDown.MouseButton1Click:Connect(function() setAlpha(previewAlpha+0.10) end) -- más trans = menos visible
+        pAlphaDown.MouseButton1Click:Connect(function() setAlpha(previewAlpha+0.10) end)
         pAlphaUp.MouseButton1Click:Connect(function() setAlpha(previewAlpha-0.10) end)
 
         local rBld=bRow(32)
@@ -554,7 +540,6 @@ function FormasModule.init(ENV)
 
     local function setStat(t,col) StatLbl.Text=t; StatLbl.TextColor3=col or T.text end
 
-    -- CAMBIO AUTOMÁTICO DE ZONA AL CAMBIAR DE EQUIPO
     LP:GetPropertyChangedSignal("Team"):Connect(function()
         task.wait(0.5)
         local z=closestZone(myRefPos())
@@ -564,7 +549,6 @@ function FormasModule.init(ENV)
         end
     end)
 
-    -- HANDLES DRAG
     do
         local drag2,savedCam,origDP=false,nil,nil
         Handles.MouseButton1Down:Connect(function() if not PageBuild.Visible or locked or not centerPos then return end; drag2=true; origDP=cDummy.Position; savedCam=Camera.CFrame; Camera.CameraType=Enum.CameraType.Scriptable end)
@@ -582,7 +566,6 @@ function FormasModule.init(ENV)
         end)
     end
 
-    -- PREVIEW POOL
     local prevPool={}
     local function hidePreview() for _,p in ipairs(prevPool) do p.Transparency=1; p.Size=Vector3.new(0.05,0.05,0.05) end end
     local function renderPreview(plan)
@@ -627,7 +610,6 @@ function FormasModule.init(ENV)
         markPreview()
     end)
 
-    -- BUILD PRINCIPAL
     local blockQueue={}; local blockConn=nil
     local function hookFolder(folder)
         if blockConn then blockConn:Disconnect(); blockConn=nil end; blockQueue={}
@@ -676,7 +658,6 @@ function FormasModule.init(ENV)
         task.spawn(iniciarConstruccion)
     end)
 
-    -- INIT
     refreshShapes(); refreshCaps(); refreshFill(); refreshTool(); refreshBuildRows(); onShapeChange()
     task.defer(function() task.wait(0.3); refreshShapes() end)
     task.spawn(function()
@@ -688,7 +669,6 @@ function FormasModule.init(ENV)
         end
     end)
 
-    -- API pública
     return {
         page        = PageBuild,
         hidePreview = hidePreview,
