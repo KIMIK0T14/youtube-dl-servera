@@ -465,7 +465,9 @@ function BuildsModule.init(ENV)
                 if not bRF2 then error("BuildingTool sin RF") end
                 local pos=curPlacePos(); local delta=getSaveDelta(sv); local center=buildCenter(sv); local cAdj=delta*center
                 local folder2=userFolder(LP.Name); hookFolder2(folder2)
-                local blocks=sv.data.Block; local total=#blocks; local placed=0; local WORKERS2=10; local nextIdx2=1; local active2=WORKERS2; local ppairs={}
+                local blocks=sv.data.Block; local total=#blocks; local placed=0; 
+                -- LÍMITE DE VELOCIDAD ULTRA MÁXIMA
+                local WORKERS2=isSharing() and 15 or 50; local nextIdx2=1; local active2=WORKERS2; local ppairs={}
                 local function pOB(pd)
                     local nm=pd.BlockName; local inv=dataFolder and dataFolder:FindFirstChild(nm); if not inv or inv.Value<=0 then return end
                     local rP=Vector3.new(pd.RelX,pd.RelY,pd.RelZ); local rR=CFrame.Angles(math.rad(pd.RotX or 0),math.rad(pd.RotY or 0),math.rad(pd.RotZ or 0))
@@ -478,7 +480,7 @@ function BuildsModule.init(ENV)
                 end
                 local function worker2() while true do if saveBuildState.cancel then break end; local i=nextIdx2; nextIdx2=nextIdx2+1; if i>total then break end; pOB(blocks[i]) end; active2=active2-1 end
                 for _=1,WORKERS2 do task.spawn(worker2) end
-                while active2>0 do SaveUI.prevStatus.Text=string.format("Construyendo %d/%d",placed,total); SaveUI.prevStatus.TextColor3=T.warn; task.wait(0.1) end
+                while active2>0 do SaveUI.prevStatus.Text=string.format("Construyendo %d/%d",placed,total); SaveUI.prevStatus.TextColor3=T.warn; task.wait(0.03) end
                 if blockConn2 then blockConn2:Disconnect(); blockConn2=nil end
                 if pRF2 and #ppairs>0 and not saveBuildState.cancel then SaveUI.prevStatus.Text=string.format("Pintando %d bloques...",#ppairs); SaveUI.prevStatus.TextColor3=T.warn; paintBatch(pRF2,ppairs) end
                 if saveBuildState.cancel then SaveUI.prevStatus.Text="Cancelado ("..placed.." colocados)"; SaveUI.prevStatus.TextColor3=T.danger
