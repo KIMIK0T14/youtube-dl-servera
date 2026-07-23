@@ -772,21 +772,6 @@ function FormasModule.init(ENV)
     end
 
     do
-            local drag2,savedCam,origDP=false,nil,nil
-        Handles.MouseButton1Down:Connect(function() if not PageBuild.Visible or locked or not centerPos then return end; drag2=true; origDP=cDummy.Position; savedCam=Camera.CFrame; Camera.CameraType=Enum.CameraType.Scriptable end)
-        Handles.MouseDrag:Connect(function(face,dist) if not PageBuild.Visible or not drag2 or not origDP then return end; local st=stepVal(moveStepBox); local d=(st>0)and(math.floor(dist/st+0.5)*st)or dist; centerPos=origDP+cDummy.CFrame:VectorToWorldSpace(Vector3.FromNormalId(face))*d; cDummy.Position=centerPos; markPreview() end)
-        Handles.MouseButton1Up:Connect(function() if not PageBuild.Visible then return end; drag2=false; savedCam=nil; Camera.CameraType=Enum.CameraType.Custom end)
-        local arcDrag,arcStartRot,arcSavedCam=false,nil,nil; local activeArcAxis=nil
-        Arc.MouseButton1Down:Connect(function() if locked or not centerPos then return end; arcDrag=true; arcStartRot=shapeRot; arcSavedCam=Camera.CFrame; Camera.CameraType=Enum.CameraType.Scriptable end)
-        Arc.MouseDrag:Connect(function(axis,relAngle) if not arcDrag then return end; if activeArcAxis~=axis then activeArcAxis=axis end; local av=(axis==Enum.Axis.X and Vector3.xAxis)or(axis==Enum.Axis.Y and Vector3.yAxis)or Vector3.zAxis; local st=stepVal(rotStepBox); local snapped=(st>0)and math.rad(math.floor(math.deg(relAngle)/st+0.5)*st)or relAngle; shapeRot=arcStartRot*CFrame.fromAxisAngle(av,snapped); hasRot=true; if centerPos then cDummy.CFrame=CFrame.new(centerPos)*shapeRot end; markPreview() end)
-        Arc.MouseButton1Up:Connect(function() arcDrag=false; arcSavedCam=nil; activeArcAxis=nil; Camera.CameraType=Enum.CameraType.Custom end)
-        RunService.RenderStepped:Connect(function()
-            if drag2 and savedCam then Camera.CFrame=savedCam end
-            if arcDrag and arcSavedCam then Camera.CFrame=arcSavedCam end
-            if centerPos and hasRot then cDummy.CFrame=CFrame.new(centerPos)*shapeRot elseif centerPos then cDummy.Position=centerPos end
-            if centerPos then ArcAdornee.CFrame=CFrame.new(centerPos)*shapeRot else ArcAdornee.Position=Vector3.new(0,-9999,0) end
-        end)
-    end
         local rPos=bRow(28)
         BtnBuildCenter=btn(rPos,"Centro zona",UDim2.new(0.5,-3,1,0),UDim2.new(0,0,0,0),T.accent); BtnBuildCenter.TextColor3=T.bg
         BtnBuildSel=btn(rPos,"Sel. Posición",UDim2.new(0.5,-3,1,0),UDim2.new(0.5,3,0,0),T.btnAlt)
@@ -881,61 +866,33 @@ function FormasModule.init(ENV)
     end)
 
     -- ══════════════════════════════════════════════
-    -- Handles drag logic + RenderStepped (Cámara sin congelarse)
+    -- Handles drag logic + RenderStepped (Cámara sin congelarse usando tu snippet)
     -- ══════════════════════════════════════════════
     do
-        local drag2, origDP = false, nil
-        Handles.MouseButton1Down:Connect(function()
-            if not PageBuild.Visible or locked or not centerPos then return end
-            drag2 = true
-            origDP = cDummy.Position
-        end)
-        Handles.MouseDrag:Connect(function(face, dist)
-            if not PageBuild.Visible or not drag2 or not origDP then return end
-            local st = stepVal(moveStepBox)
-            local d = (st > 0) and (math.floor(dist / st + 0.5) * st) or dist
-            centerPos = origDP + cDummy.CFrame:VectorToWorldSpace(Vector3.FromNormalId(face)) * d
-            cDummy.Position = centerPos
-            markPreview()
-        end)
-        Handles.MouseButton1Up:Connect(function()
-            if not PageBuild.Visible then return end
-            drag2 = false
-        end)
-
-        local arcDrag, arcStartRot = false, nil
-        local activeArcAxis = nil
-        Arc.MouseButton1Down:Connect(function()
-            if locked or not centerPos then return end
-            arcDrag = true
-            arcStartRot = shapeRot
-        end)
-        Arc.MouseDrag:Connect(function(axis, relAngle)
-            if not arcDrag then return end
-            if activeArcAxis ~= axis then activeArcAxis = axis end
-            local av = (axis == Enum.Axis.X and Vector3.xAxis) or (axis == Enum.Axis.Y and Vector3.yAxis) or Vector3.zAxis
-            local st = stepVal(rotStepBox)
-            local snapped = (st > 0) and math.rad(math.floor(math.deg(relAngle) / st + 0.5) * st) or relAngle
-            shapeRot = arcStartRot * CFrame.fromAxisAngle(av, snapped)
-            hasRot = true
-            if centerPos then cDummy.CFrame = CFrame.new(centerPos) * shapeRot end
-            markPreview()
-        end)
-        Arc.MouseButton1Up:Connect(function()
-            arcDrag = false
-            activeArcAxis = nil
-        end)
-
-        -- FIX handles: RenderStepped mantiene posición Y re-valida adornee
-        -- (Se removió el bloqueo de cámara Scriptable para que la cámara siga al jugador)
+        local drag2,savedCam,origDP=false,nil,nil
+        Handles.MouseButton1Down:Connect(function() if not PageBuild.Visible or locked or not centerPos then return end; drag2=true; origDP=cDummy.Position; savedCam=Camera.CFrame; Camera.CameraType=Enum.CameraType.Scriptable end)
+        Handles.MouseDrag:Connect(function(face,dist) if not PageBuild.Visible or not drag2 or not origDP then return end; local st=stepVal(moveStepBox); local d=(st>0)and(math.floor(dist/st+0.5)*st)or dist; centerPos=origDP+cDummy.CFrame:VectorToWorldSpace(Vector3.FromNormalId(face))*d; cDummy.Position=centerPos; markPreview() end)
+        Handles.MouseButton1Up:Connect(function() if not PageBuild.Visible then return end; drag2=false; savedCam=nil; Camera.CameraType=Enum.CameraType.Custom end)
+        
+        local arcDrag,arcStartRot,arcSavedCam=false,nil,nil; local activeArcAxis=nil
+        Arc.MouseButton1Down:Connect(function() if locked or not centerPos then return end; arcDrag=true; arcStartRot=shapeRot; arcSavedCam=Camera.CFrame; Camera.CameraType=Enum.CameraType.Scriptable end)
+        Arc.MouseDrag:Connect(function(axis,relAngle) if not arcDrag then return end; if activeArcAxis~=axis then activeArcAxis=axis end; local av=(axis==Enum.Axis.X and Vector3.xAxis)or(axis==Enum.Axis.Y and Vector3.yAxis)or Vector3.zAxis; local st=stepVal(rotStepBox); local snapped=(st>0)and math.rad(math.floor(math.deg(relAngle)/st+0.5)*st)or relAngle; shapeRot=arcStartRot*CFrame.fromAxisAngle(av,snapped); hasRot=true; if centerPos then cDummy.CFrame=CFrame.new(centerPos)*shapeRot end; markPreview() end)
+        Arc.MouseButton1Up:Connect(function() arcDrag=false; arcSavedCam=nil; activeArcAxis=nil; Camera.CameraType=Enum.CameraType.Custom end)
+        
         RunService.RenderStepped:Connect(function()
-            if centerPos then
-                local targetCF = hasRot and CFrame.new(centerPos) * shapeRot or CFrame.new(centerPos)
-                cDummy.CFrame     = targetCF
-                ArcAdornee.CFrame = targetCF
-            else
-                cDummy.Position     = Vector3.new(0, -9999, 0)
-                ArcAdornee.Position = Vector3.new(0, -9999, 0)
+            if drag2 and savedCam then Camera.CFrame=savedCam end
+            if arcDrag and arcSavedCam then Camera.CFrame=arcSavedCam end
+            
+            if centerPos and hasRot then 
+                cDummy.CFrame=CFrame.new(centerPos)*shapeRot 
+            elseif centerPos then 
+                cDummy.Position=centerPos 
+            end
+            
+            if centerPos then 
+                ArcAdornee.CFrame=CFrame.new(centerPos)*shapeRot 
+            else 
+                ArcAdornee.Position=Vector3.new(0,-9999,0) 
             end
 
             -- Re-validar visibilidad y adornee en cada frame para prevenir desaparición
@@ -1072,7 +1029,10 @@ function FormasModule.init(ENV)
                 if blk and sRF then pcall(function() sRF:InvokeServer(blk,seg.size,seg.cframe) end) end
                 return blk
             end
-            local WORKERS=sharing and 6 or 10; local nextIdx=1; local active=WORKERS
+            
+            -- LÍMITE DE VELOCIDAD: 50 subprocesos para spamear el servidor lo más rápido posible sin compartir.
+            -- Si está compartiendo, usa 15 para no sobrecargar la sincronización entre clientes.
+            local WORKERS=sharing and 15 or 50; local nextIdx=1; local active=WORKERS
             local function worker()
                 while true do
                     if buildState.cancel then break end
@@ -1085,7 +1045,9 @@ function FormasModule.init(ENV)
                 active=active-1
             end
             for _=1,WORKERS do task.spawn(worker) end
-            while active>0 do setStat(("Construyendo %d/%d"):format(placed,total),T.warn); task.wait(0.1) end
+            -- Actualiza la interfaz rapidísimo
+            while active>0 do setStat(("Construyendo %d/%d"):format(placed,total),T.warn); task.wait(0.03) end
+            
             if blockConn then blockConn:Disconnect(); blockConn=nil end
             if buildUseColor and pRF and #placedBlocks>0 and not buildState.cancel then
                 setStat(("Pintando %d bloques..."):format(#placedBlocks),T.warn)
