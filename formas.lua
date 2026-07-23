@@ -68,7 +68,6 @@ function FormasModule.init(ENV)
     local gbRunningRef = ENV.gbRunning
     local buildState  = {running=false, cancel=false}
 
-    -- ── Material/color actuales del bloque seleccionado ──
     local selBlockMat = Enum.Material.Plastic
     local selBlockCol = Color3.fromRGB(163,162,165)
 
@@ -169,7 +168,7 @@ function FormasModule.init(ENV)
                 gz=gz+step
             end
         end
-        local function fillCap(plan,u,cx,cy,cz,r,th,step) if capFillMode=="grid" then fillGrid(plan,u,cx,cy,cz,r,th,step) else fillStrips(plan,u,cx,cy,cz,r,th,step) end end
+        local function fillCap(plan,u,cx,cy,cz,r,th,step) fillStrips(plan,u,cx,cy,cz,r,th,step) end
         local function buildExtruded(plan,u,cx,cy,cz,r,h,th,count,cT,cB)
             local per=perimOf(u,r); local seg=per/math.max(1,count)
             placeRing(plan,u,true,cx,cy,cz,r,h,th,count)
@@ -370,14 +369,16 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- UI ORDEN 3: Tapas
+    -- UI ORDEN 3: Tapas (Simétrico)
     -- ══════════════════════════════════════════════
     local capBtnTop, capBtnBot
     local function refreshCaps()
         local def=SHAPES[selShape]
         if def and def.caps=="bottom" then
             capBtnTop.Visible=false; capBtnBot.Visible=true
-            capBtnBot.Text="▼ Tapa base"; capBtnBot.Size=UDim2.new(0,150,0,22)
+            capBtnBot.Text="▼ Tapa base"
+            -- Ocupa exactamente el ancho de los dos botones para mantener simetría
+            capBtnBot.Size=UDim2.new(0,182,0,22)
             capBtnBot.AnchorPoint=Vector2.new(0,0.5); capBtnBot.Position=UDim2.new(0,52,0.5,0)
         else
             capBtnTop.Visible=true; capBtnBot.Visible=true
@@ -397,25 +398,10 @@ function FormasModule.init(ENV)
         capBtnBot.MouseButton1Click:Connect(function() capBotOn=not capBotOn; refreshCaps(); markPreview() end)
     end
 
-    -- ══════════════════════════════════════════════
-    -- UI ORDEN 4: Relleno de tapas
-    -- ══════════════════════════════════════════════
-    local fillStripBtn, fillGridBtn
-    local function refreshFill()
-        fillStripBtn.BackgroundColor3=(capFillMode=="strips") and T.build or T.btnAlt
-        fillGridBtn.BackgroundColor3=(capFillMode=="grid") and T.build or T.btnAlt
-    end
-    do
-        local rFill=bRow(24,function() local d=SHAPES[selShape]; return d and d.fillable==true and(capTopOn or capBotOn) end)
-        lbl(rFill,"Relleno",UDim2.new(0,50,1,0),nil,T.sub)
-        fillStripBtn=btn(rFill,"Tiras",UDim2.new(0,80,0,24),UDim2.new(0,52,0,0),T.build)
-        fillGridBtn=btn(rFill,"Bloques",UDim2.new(0,80,0,24),UDim2.new(0,138,0,0),T.btnAlt)
-        fillStripBtn.MouseButton1Click:Connect(function() capFillMode="strips"; refreshFill(); markPreview() end)
-        fillGridBtn.MouseButton1Click:Connect(function() capFillMode="grid"; refreshFill(); markPreview() end)
-    end
+    -- (Se eliminó por completo la UI de Tiras/Bloques para ahorrar espacio. Por defecto es 'strips')
 
     -- ══════════════════════════════════════════════
-    -- UI ORDEN 5: COLOR & MATERIAL COMBINADO (Ahorro vertical)
+    -- UI ORDEN 4: COLOR & MATERIAL COMBINADO 
     -- ══════════════════════════════════════════════
     local selBlockNameRef = {value="PlasticBlock"}
     local matPickOv, matPickBtn
@@ -437,8 +423,6 @@ function FormasModule.init(ENV)
 
     do
         local rColorMat = bRow(28)
-        
-        -- Indicador de color
         local colBtnInd = mk("Frame", rColorMat, {
             Size = UDim2.new(0, 22, 0, 22),
             Position = UDim2.new(0, 4, 0.5, -11),
@@ -447,10 +431,8 @@ function FormasModule.init(ENV)
         })
         corner(colBtnInd, 11); stroke(colBtnInd, T.text, 1.5)
 
-        -- Botón Elegir Color
         local bOP = btn(rColorMat, "Elegir color", UDim2.new(0, 80, 0, 24), UDim2.new(0, 30, 0.5, -12), T.btn)
 
-        -- Botón ON/OFF
         local bTC = btn(rColorMat, "ON", UDim2.new(0, 36, 0, 24), UDim2.new(0, 114, 0.5, -12), T.btnAlt)
         local function refCB()
             bTC.BackgroundColor3 = buildUseColor and T.build or T.btnAlt
@@ -462,22 +444,7 @@ function FormasModule.init(ENV)
             refCB()
             markPreview()
         end)
-        bOP.MouseButton1Click:Connect(function()
-            openCP(selColor, function(col)
-                selColor = col
-                colBtnInd.BackgroundColor3 = col
-                buildUseColor = true
-                refCB()
-                markPreview()
-            end,
-            function(col)
-                selColor = col
-                colBtnInd.BackgroundColor3 = col
-                if buildUseColor then markPreview() end
-            end)
-        end)
 
-        -- Botón Material / Seleccionar Bloque (A la derecha)
         matPickBtn = mk("TextButton", rColorMat, {
             Size = UDim2.new(1, -160, 0, 24),
             Position = UDim2.new(0, 156, 0.5, -12),
@@ -508,7 +475,6 @@ function FormasModule.init(ENV)
             Text = selBlockNameRef.value
         })
 
-        -- Overlay para seleccionar bloque
         matPickOv = mk("Frame", ENV.Win, {
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundColor3 = Color3.new(0, 0, 0),
@@ -651,6 +617,101 @@ function FormasModule.init(ENV)
             matPickOv.Visible = true
         end)
 
+        -- ══════════════════════════════════════════════
+        -- VENTANA DE COLOR PERSONALIZADA (Más pequeña, sin texto y cierra al tocar afuera)
+        -- ══════════════════════════════════════════════
+        local cpOv = mk("Frame", ENV.Win, {
+            Size = UDim2.new(1,0,1,0),
+            BackgroundColor3 = Color3.new(0,0,0),
+            BackgroundTransparency = 0.35,
+            BorderSizePixel = 0,
+            Visible = false,
+            ZIndex = 60
+        })
+        mk("TextButton", cpOv, {
+            Size = UDim2.new(1,0,1,0),
+            BackgroundTransparency = 1,
+            Text = "",
+            ZIndex = 60,
+            AutoButtonColor = false
+        }).MouseButton1Click:Connect(function() cpOv.Visible = false end)
+        
+        local cpBox = mk("Frame", cpOv, {
+            Size = UDim2.new(0, 200, 0, 250), -- Tamaño reducido
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0.5, 0, 0.5, 0),
+            BackgroundColor3 = T.panel,
+            BorderSizePixel = 0,
+            ZIndex = 61
+        })
+        corner(cpBox, 8)
+        
+        local previewCol = mk("Frame", cpBox, {
+            Size = UDim2.new(1, -10, 0, 30),
+            Position = UDim2.new(0, 5, 0, 5),
+            BackgroundColor3 = selColor,
+            BorderSizePixel = 0,
+            ZIndex = 62
+        })
+        corner(previewCol, 6)
+        
+        local grid = mk("Frame", cpBox, {
+            Size = UDim2.new(1, -10, 1, -80),
+            Position = UDim2.new(0, 5, 0, 40),
+            BackgroundTransparency = 1,
+            ZIndex = 62
+        })
+        mk("UIGridLayout", grid, {
+            CellSize = UDim2.new(0, 42, 0, 42),
+            CellPadding = UDim2.new(0, 4, 0, 4),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center
+        })
+        
+        local currentCol = selColor
+        local palette = {
+            Color3.fromRGB(255,255,255), Color3.fromRGB(204,204,204), Color3.fromRGB(153,153,153), Color3.fromRGB(102,102,102),
+            Color3.fromRGB(51,51,51), Color3.fromRGB(0,0,0), Color3.fromRGB(255,0,0), Color3.fromRGB(204,0,0),
+            Color3.fromRGB(153,0,0), Color3.fromRGB(102,0,0), Color3.fromRGB(51,0,0), Color3.fromRGB(255,128,0),
+            Color3.fromRGB(255,255,0), Color3.fromRGB(153,255,0), Color3.fromRGB(51,255,0), Color3.fromRGB(0,255,0),
+            Color3.fromRGB(0,255,128), Color3.fromRGB(0,255,255), Color3.fromRGB(0,128,255), Color3.fromRGB(0,0,255),
+            Color3.fromRGB(128,0,255), Color3.fromRGB(255,0,255), Color3.fromRGB(255,0,128), Color3.fromRGB(139,69,19)
+        }
+        for _, col in ipairs(palette) do
+            local swatch = mk("TextButton", grid, {
+                BackgroundColor3 = col,
+                Text = "",
+                BorderSizePixel = 0,
+                ZIndex = 63
+            })
+            corner(swatch, 6)
+            swatch.MouseButton1Click:Connect(function()
+                currentCol = col
+                previewCol.BackgroundColor3 = col
+            end)
+        end
+        
+        local btnAccept = btn(cpBox, "Aceptar", UDim2.new(0.5, -5, 0, 30), UDim2.new(0, 5, 1, -35), T.build)
+        local btnCancel = btn(cpBox, "Cancelar", UDim2.new(0.5, -5, 0, 30), UDim2.new(0.5, 0, 1, -35), T.btnAlt)
+        
+        btnAccept.MouseButton1Click:Connect(function()
+            selColor = currentCol
+            colBtnInd.BackgroundColor3 = selColor
+            buildUseColor = true
+            refCB()
+            markPreview()
+            cpOv.Visible = false
+        end)
+        btnCancel.MouseButton1Click:Connect(function()
+            cpOv.Visible = false
+        end)
+        
+        bOP.MouseButton1Click:Connect(function()
+            currentCol = selColor
+            previewCol.BackgroundColor3 = selColor
+            cpOv.Visible = true
+        end)
+
         -- Auto-seleccionar primer bloque al iniciar
         task.defer(function()
             task.wait(0.8)
@@ -718,7 +779,7 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- UI ORDEN 6: Selector Mover / Rotar
+    -- UI ORDEN 5: Selector Mover / Rotar
     -- ══════════════════════════════════════════════
     local bMove, bRotT, moveStepBox, rotStepBox
     local function refreshTool()
@@ -737,7 +798,7 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- UI ORDEN 7: Centro zona / Sel. Posición + Vista previa + Construir
+    -- UI ORDEN 6: Centro zona / Sel. Posición + Vista previa + Construir
     -- ══════════════════════════════════════════════
     local selBox = mk("SelectionBox", SG, {Color3=T.accent, LineThickness=0.04})
     local BtnBuild, StatLbl, BtnPrev
@@ -866,70 +927,68 @@ function FormasModule.init(ENV)
     end)
 
     -- ══════════════════════════════════════════════
-    -- Handles drag logic + RenderStepped (Cámara sin congelarse)
+    -- Handles drag logic (Cámara Scriptable - Totalmente Quieta)
     -- ══════════════════════════════════════════════
     do
-        local drag2, origDP = false, nil
+        local drag2,savedCam,origDP=false,nil,nil
         Handles.MouseButton1Down:Connect(function()
             if not PageBuild.Visible or locked or not centerPos then return end
-            drag2 = true
-            origDP = cDummy.Position
+            drag2=true; origDP=cDummy.Position; savedCam=Camera.CFrame
+            Camera.CameraType=Enum.CameraType.Scriptable
         end)
-        Handles.MouseDrag:Connect(function(face, dist)
+        Handles.MouseDrag:Connect(function(face,dist)
             if not PageBuild.Visible or not drag2 or not origDP then return end
-            local st = stepVal(moveStepBox)
-            local d = (st > 0) and (math.floor(dist / st + 0.5) * st) or dist
-            centerPos = origDP + cDummy.CFrame:VectorToWorldSpace(Vector3.FromNormalId(face)) * d
-            cDummy.Position = centerPos
-            markPreview()
+            local st=stepVal(moveStepBox)
+            local d=(st>0)and(math.floor(dist/st+0.5)*st)or dist
+            centerPos=origDP+cDummy.CFrame:VectorToWorldSpace(Vector3.FromNormalId(face))*d
+            cDummy.Position=centerPos; markPreview()
         end)
         Handles.MouseButton1Up:Connect(function()
             if not PageBuild.Visible then return end
-            drag2 = false
+            drag2=false; savedCam=nil; Camera.CameraType=Enum.CameraType.Custom
         end)
 
-        local arcDrag, arcStartRot = false, nil
-        local activeArcAxis = nil
+        local arcDrag,arcStartRot,arcSavedCam=false,nil,nil
+        local activeArcAxis=nil
         Arc.MouseButton1Down:Connect(function()
             if locked or not centerPos then return end
-            arcDrag = true
-            arcStartRot = shapeRot
+            arcDrag=true; arcStartRot=shapeRot; arcSavedCam=Camera.CFrame
+            Camera.CameraType=Enum.CameraType.Scriptable
         end)
-        Arc.MouseDrag:Connect(function(axis, relAngle)
+        Arc.MouseDrag:Connect(function(axis,relAngle)
             if not arcDrag then return end
-            if activeArcAxis ~= axis then activeArcAxis = axis end
-            local av = (axis == Enum.Axis.X and Vector3.xAxis) or (axis == Enum.Axis.Y and Vector3.yAxis) or Vector3.zAxis
-            local st = stepVal(rotStepBox)
-            local snapped = (st > 0) and math.rad(math.floor(math.deg(relAngle) / st + 0.5) * st) or relAngle
-            shapeRot = arcStartRot * CFrame.fromAxisAngle(av, snapped)
-            hasRot = true
-            if centerPos then cDummy.CFrame = CFrame.new(centerPos) * shapeRot end
+            if activeArcAxis~=axis then activeArcAxis=axis end
+            local av=(axis==Enum.Axis.X and Vector3.xAxis)or(axis==Enum.Axis.Y and Vector3.yAxis)or Vector3.zAxis
+            local st=stepVal(rotStepBox)
+            local snapped=(st>0)and math.rad(math.floor(math.deg(relAngle)/st+0.5)*st)or relAngle
+            shapeRot=arcStartRot*CFrame.fromAxisAngle(av,snapped); hasRot=true
+            if centerPos then cDummy.CFrame=CFrame.new(centerPos)*shapeRot end
             markPreview()
         end)
         Arc.MouseButton1Up:Connect(function()
-            arcDrag = false
-            activeArcAxis = nil
+            arcDrag=false; arcSavedCam=nil; activeArcAxis=nil
+            Camera.CameraType=Enum.CameraType.Custom
         end)
 
-        -- FIX handles: RenderStepped mantiene posición Y re-valida adornee
-        -- (Se removió el bloqueo de cámara Scriptable para que la cámara siga al jugador)
         RunService.RenderStepped:Connect(function()
+            if drag2 and savedCam then Camera.CFrame=savedCam end
+            if arcDrag and arcSavedCam then Camera.CFrame=arcSavedCam end
+
             if centerPos then
-                local targetCF = hasRot and CFrame.new(centerPos) * shapeRot or CFrame.new(centerPos)
+                local targetCF = hasRot and CFrame.new(centerPos)*shapeRot or CFrame.new(centerPos)
                 cDummy.CFrame     = targetCF
                 ArcAdornee.CFrame = targetCF
             else
-                cDummy.Position     = Vector3.new(0, -9999, 0)
-                ArcAdornee.Position = Vector3.new(0, -9999, 0)
+                cDummy.Position     = Vector3.new(0,-9999,0)
+                ArcAdornee.Position = Vector3.new(0,-9999,0)
             end
 
-            -- Re-validar visibilidad y adornee en cada frame para prevenir desaparición
             if PageBuild.Visible and centerPos and not locked then
-                if toolMode == "move" then
+                if toolMode=="move" then
                     if Handles.Adornee ~= cDummy then Handles.Adornee = cDummy end
                     if not Handles.Visible then Handles.Visible = true end
                     if Arc.Visible then Arc.Visible = false end
-                elseif toolMode == "rotate" then
+                elseif toolMode=="rotate" then
                     if Arc.Adornee ~= ArcAdornee then Arc.Adornee = ArcAdornee end
                     if not Arc.Visible then Arc.Visible = true end
                     if Handles.Visible then Handles.Visible = false end
@@ -1001,7 +1060,7 @@ function FormasModule.init(ENV)
         else capTopOn=false; capBotOn=false end
         shapeRot=CFrame.identity; hasRot=false
         if centerPos then cDummy.CFrame=CFrame.new(centerPos) end
-        refreshShapes(); refreshCaps(); refreshFill(); refreshBuildRows(); markPreview()
+        refreshShapes(); refreshCaps(); refreshBuildRows(); markPreview()
     end
 
     BtnPrev.MouseButton1Click:Connect(function()
@@ -1095,7 +1154,7 @@ function FormasModule.init(ENV)
         task.spawn(iniciarConstruccion)
     end)
 
-    refreshShapes(); refreshCaps(); refreshFill(); refreshTool(); refreshBuildRows(); onShapeChange()
+    refreshShapes(); refreshCaps(); refreshTool(); refreshBuildRows(); onShapeChange()
     task.defer(function() task.wait(0.3); refreshShapes() end)
     task.spawn(function()
         task.wait(1)
