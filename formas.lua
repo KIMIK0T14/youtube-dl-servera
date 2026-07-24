@@ -20,7 +20,6 @@ function FormasModule.init(ENV)
     local sS=1; local cP=nil; local pOn=true; local pA=0.55; local lk=false
     local tM="move"; local sR=CFrame.identity; local hR=false
     local cTO=false; local cBO=false; local cFM="strips"
-    local cLayout="wrap2" -- Nueva variable para el layout de texto
     local bUC=false; local selColor=Color3.fromRGB(255,255,255)
     local sBN="PlasticBlock"; local gbRunRef=ENV.gbRunning; local bS={running=false,cancel=false}
     local sBMat=Enum.Material.Plastic; local sBCol=Color3.fromRGB(163,162,165)
@@ -57,31 +56,31 @@ function FormasModule.init(ENV)
 
     local gS,SHAPES
     do
-        -- Fuente 5x5 para construir texto en bloques (A-Z, a-z, 0-9, espacio y básicos)
+        -- Fuente 5x5 compacta (sin huecos a los lados para que Espacio=0 las haga tocar)
         local FONT5x5 = {
-            A="01100 10010 11110 10010 10010", B="11100 10010 11100 10010 11100", C="01110 10000 10000 10000 01110",
-            D="11100 10010 10010 10010 11100", E="11110 10000 11100 10000 11110", F="11110 10000 11100 10000 10000",
-            G="01110 10000 10110 10010 01110", H="10010 10010 11110 10010 10010", I="11100 01000 01000 01000 11100",
-            J="00110 00010 00010 10010 01100", K="10010 10100 11000 10100 10010", L="10000 10000 10000 10000 11110",
-            M="10010 11110 11110 10010 10010", N="10010 11010 10110 10010 10010", O="01100 10010 10010 10010 01100",
-            P="11100 10010 11100 10000 10000", Q="01100 10010 10010 10110 01110", R="11100 10010 11100 10100 10010",
-            S="01110 10000 01100 00010 11100", T="11100 01000 01000 01000 01000", U="10010 10010 10010 10010 01100",
-            V="10010 10010 10010 10010 01000", W="10010 10010 11110 11110 10010", X="10010 10010 01000 10010 10010",
-            Y="10010 10010 01000 01000 01000", Z="11110 00100 01000 10000 11110",
-            a="00000 01110 00010 11110 10010", b="10000 11100 10010 10010 11100", c="00000 01110 10000 10000 01110",
-            d="00010 01110 10010 10010 01110", e="00000 01100 10110 11000 01100", f="00100 01010 01100 01000 01000",
-            g="00000 01110 10010 01110 00010", h="10000 11100 10010 10010 10010", i="01000 00000 01000 01000 00100",
-            j="00010 00000 00010 10010 01100", k="10000 10010 10100 11000 10010", l="01000 01000 01000 01000 00100",
-            m="00000 11010 10110 10110 10010", n="00000 11100 10010 10010 10010", o="00000 01100 10010 10010 01100",
-            p="00000 11100 10010 11100 10000", q="00000 01110 10010 01110 00010", r="00000 10110 11000 10000 10000",
-            s="00000 01110 11000 00110 11100", t="01000 01100 01000 01000 00100", u="00000 10010 10010 10010 01110",
-            v="00000 10010 10010 10010 01000", w="00000 10010 10110 10110 01010", x="00000 10010 01000 01000 10010",
-            y="00000 10010 01110 00010 01100", z="00000 11110 00100 01000 11110",
-            ["0"]="01100 10010 10010 10010 01100", ["1"]="01000 11000 01000 01000 11100", ["2"]="11100 00010 01100 10000 11110",
-            ["3"]="11100 00010 01100 00010 11100", ["4"]="10010 10010 11110 00010 00010", ["5"]="11110 10000 11100 00010 11100",
-            ["6"]="01100 10000 11100 10010 01100", ["7"]="11110 00010 00100 01000 01000", ["8"]="01100 10010 01100 10010 01100",
-            ["9"]="01100 10010 01110 00010 01100", [" "]="00000 00000 00000 00000 00000", ["!"]="01000 01000 01000 00000 01000",
-            ["?"]="11100 00010 01100 00000 01000", ["."]="00000 00000 00000 00000 01000", [","]="00000 00000 00000 01000 10000",
+            A="01110 10001 11111 10001 10001", B="11110 10001 11110 10001 11110", C="01110 10000 10000 10000 01110",
+            D="11110 10001 10001 10001 11110", E="11111 10000 11110 10000 11111", F="11111 10000 11110 10000 10000",
+            G="01110 10000 10111 10001 01110", H="10001 10001 11111 10001 10001", I="11111 00100 00100 00100 11111",
+            J="00111 00010 00010 10010 01100", K="10001 10010 11100 10010 10001", L="10000 10000 10000 10000 11111",
+            M="10001 11011 10101 10001 10001", N="10001 11001 10101 10011 10001", ["Ñ"]="01101 10001 11001 10101 10011",
+            O="01110 10001 10001 10001 01110", P="11110 10001 11110 10000 10000", Q="01110 10001 10011 01111 00001",
+            R="11110 10001 11110 10010 10001", S="01111 10000 01110 00001 11110", T="11111 00100 00100 00100 00100",
+            U="10001 10001 10001 10001 01110", V="10001 10001 10001 01010 00100", W="10001 10001 10101 11011 10001",
+            X="10001 01010 00100 01010 10001", Y="10001 01010 00100 00100 00100", Z="11111 00010 00100 01000 11111",
+            a="00000 01110 00001 01111 10001", b="10000 11110 10001 10001 11110", c="00000 01110 10000 10000 01110",
+            d="00001 01111 10001 10001 01111", e="00000 01110 10111 11000 01110", f="00100 01010 01100 01000 01100",
+            g="00000 01111 10001 01111 00001", h="10000 11110 10001 10001 10001", i="00100 00000 01100 00100 01100",
+            j="00010 00000 00010 10010 01100", k="10000 10010 10100 11000 10001", l="01100 00100 00100 00100 01100",
+            m="00000 11010 10101 10101 10001", n="00000 11110 10001 10001 10001", ["ñ"]="01101 00000 11110 10001 10001",
+            o="00000 01110 10001 10001 01110", p="00000 11110 10001 11110 10000", q="00000 01111 10001 01111 00001",
+            r="00000 10110 11000 10000 10000", s="00000 01111 10000 00001 11110", t="00100 01110 00100 00100 00110",
+            u="00000 10001 10001 10001 01111", v="00000 10001 10001 01010 00100", w="00000 10001 10101 10101 01010",
+            x="00000 00000 10001 01010 10001", y="00000 10001 10001 01111 00001", z="00000 11111 00010 00100 11111",
+            ["0"]="01110 10001 10001 10001 01110", ["1"]="00100 01100 00100 00100 01110", ["2"]="01110 00001 01110 10000 11111",
+            ["3"]="11110 00001 01110 00001 11110", ["4"]="10001 10001 11111 00001 00001", ["5"]="11111 10000 11110 00001 11110",
+            ["6"]="01110 10000 11110 10001 01110", ["7"]="11111 00001 00010 00100 00100", ["8"]="01110 10001 01110 10001 01110",
+            ["9"]="01110 10001 01111 00001 01110", [" "]="00000 00000 00000 00000 00000", ["!"]="00100 00100 00100 00000 00100",
+            ["?"]="01110 00001 00110 00000 00100", ["."]="00000 00000 00000 00000 00100", [","]="00000 00000 00000 00100 01000",
         }
 
         local function circPts(n) local p={}; for i=0,n-1 do local a=(i/n)*math.pi*2; p[#p+1]=Vector2.new(math.cos(a),math.sin(a)) end; return p end
@@ -184,32 +183,16 @@ function FormasModule.init(ENV)
             if #text == 0 then return end
             local pxSize = math.max(0.1, P.overallSize or 1)
             local thick = math.max(0.1, P.thick or 1)
-            local spaceSize = math.max(0, P.letterSpacing or 1) * pxSize
+            local spaceSize = math.max(0, P.letterSpacing or 0) * pxSize
             local scaleX = math.max(0.1, P.letterWidth or 1)
             local scaleY = math.max(0.1, P.letterHeight or 1)
             local charW = 5 * pxSize * scaleX
             local charH = 5 * pxSize * scaleY
-            local spaceW = 1 * pxSize * scaleX
+            local spaceW = 2 * pxSize * scaleX
 
-            local words = string.split(text, " ")
-            local lines = {}
-            if P.layout == "free" or #words <= 1 then
-                lines[1] = text
-            else
-                local i = 1
-                while i <= #words do
-                    if i + 1 <= #words then
-                        table.insert(lines, words[i] .. " " .. words[i+1])
-                        i = i + 2
-                    else
-                        table.insert(lines, words[i])
-                        i = i + 1
-                    end
-                end
-            end
-
+            local lines = { text }
             local totalH = #lines * charH + (#lines - 1) * spaceSize
-            local startY = cy + totalH / 2 - charH / 2
+            local startY = cy + totalH / 2
 
             for _, line in ipairs(lines) do
                 local lineWidth = 0
@@ -292,7 +275,15 @@ function FormasModule.init(ENV)
             elseif ic=="pyramid" then local tx,ty=cx2,cy2-R; local blx,bly=cx2-R,cy2+R*0.8; local brx,bry=cx2+R,cy2+R*0.8; dLine(container,tx,ty,blx,bly,col); dLine(container,tx,ty,brx,bry,col); dLine(container,blx,bly,brx,bry,col); dLine(container,tx,ty,cx2+R*0.35,bry,col)
             elseif ic=="capsule" then local st=mk("Frame",container,{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(R*1.2,R*2),BackgroundTransparency=1}); corner(st,999); mk("UIStroke",st,{Color=col,Thickness=2,ApplyStrokeMode=Enum.ApplyStrokeMode.Border})
             elseif ic=="heart" then local scale=R*0.82; local pts={}; local N=32; for k2=0,N-1 do local t=(k2/N)*2*math.pi; local px=16*math.sin(t)^3; local py=-(13*math.cos(t)-5*math.cos(2*t)-2*math.cos(3*t)-math.cos(4*t)); pts[k2+1]={cx2+px*scale/17,cy2+py*scale/17} end; for i=1,N do local a2=pts[i]; local b2=pts[(i%N)+1]; dLine(container,a2[1],a2[2],b2[1],b2[2],col) end
-            elseif ic=="text" then local s=R*0.6; dLine(container,cx2-s,cy2-s,cx2+s,cy2-s,col); dLine(container,cx2,cy2-s,cx2,cy2+s,col)
+            elseif ic=="text" then 
+                mk("TextLabel", container, {
+                    Size = UDim2.new(1, 0, 1, 0),
+                    BackgroundTransparency = 1,
+                    Text = "abc",
+                    TextColor3 = col,
+                    Font = Enum.Font.GothamBold,
+                    TextSize = bsz * 0.45
+                })
             end
         end
     end
@@ -311,8 +302,7 @@ function FormasModule.init(ENV)
             overallSize=math.max(0.1,tonumber(BInput.bOverallSize and BInput.bOverallSize.Text) or 1),
             letterWidth=math.max(0.1,tonumber(BInput.bLetterWidth and BInput.bLetterWidth.Text) or 1),
             letterHeight=math.max(0.1,tonumber(BInput.bLetterHeight and BInput.bLetterHeight.Text) or 1),
-            letterSpacing=math.max(0,tonumber(BInput.bLetterSpace and BInput.bLetterSpace.Text) or 1),
-            layout=cLayout,
+            letterSpacing=math.max(0,tonumber(BInput.bLetterSpace and BInput.bLetterSpace.Text) or 0),
         }
     end
 
@@ -397,15 +387,6 @@ function FormasModule.init(ENV)
     end
 
     do
-        local rRad=bRow(24, function() local d=SHAPES[sS]; return d and d.kind~="text" end); BInput.bRadius=mkNumRow(rRad,"Radio","20",1,0.01)
-        local rCnt=bRow(24,function() local d=SHAPES[sS]; return d and d.useCount~=false end); BInput.bSteps=mkNumRow(rCnt,"Parts","120",4,4)
-        local rHgt=bRow(24,function() local d=SHAPES[sS]; return d and d.useHeight==true end); BInput.bSizeY=mkNumRow(rHgt,"Altura","8",1,0.01)
-        local rThk=bRow(24); BInput.bThick=mkNumRow(rThk,"Grosor","1",0.1,0.01)
-        local rPnt=bRow(24,function() local d=SHAPES[sS]; return d and d.usePoint==true end); BInput.bPunta=mkNumRow(rPnt,"Punta","0",0.1,0)
-    end
-
-    -- NUEVAS CONFIGURACIONES PARA TEXTO
-    do
         local rTxt=bRow(24, function() local d=SHAPES[sS]; return d and d.kind=="text" end)
         lbl(rTxt, "Texto", UDim2.new(0,72,1,0), UDim2.new(0,0,0,0), T.sub)
         local txtBox=box(rTxt, UDim2.new(1,-132,0,24), UDim2.new(0,104,0,0), "TEXTO")
@@ -413,34 +394,24 @@ function FormasModule.init(ENV)
         BInput.bText=txtBox
         txtBox.FocusLost:Connect(function() mPv() end)
         txtBox:GetPropertyChangedSignal("Text"):Connect(mPv)
-        
+
+        local rRad=bRow(24, function() local d=SHAPES[sS]; return d and d.kind~="text" end); BInput.bRadius=mkNumRow(rRad,"Radio","20",1,0.01)
+        local rCnt=bRow(24,function() local d=SHAPES[sS]; return d and d.useCount~=false end); BInput.bSteps=mkNumRow(rCnt,"Parts","120",4,4)
+        local rHgt=bRow(24,function() local d=SHAPES[sS]; return d and d.useHeight==true end); BInput.bSizeY=mkNumRow(rHgt,"Altura","8",1,0.01)
+        local rThk=bRow(24); BInput.bThick=mkNumRow(rThk,"Grosor","1",0.1,0.01)
+        local rPnt=bRow(24,function() local d=SHAPES[sS]; return d and d.usePoint==true end); BInput.bPunta=mkNumRow(rPnt,"Punta","0",0.1,0)
+
         local rTxtW=bRow(24, function() local d=SHAPES[sS]; return d and d.kind=="text" end)
         BInput.bLetterWidth=mkNumRow(rTxtW, "Ancho L.", "1", 0.1, 0.1)
-        
+
         local rTxtH=bRow(24, function() local d=SHAPES[sS]; return d and d.kind=="text" end)
         BInput.bLetterHeight=mkNumRow(rTxtH, "Alto L.", "1", 0.1, 0.1)
-        
+
         local rTxtS=bRow(24, function() local d=SHAPES[sS]; return d and d.kind=="text" end)
-        BInput.bLetterSpace=mkNumRow(rTxtS, "Espacio", "1", 0.1, 0)
-        
+        BInput.bLetterSpace=mkNumRow(rTxtS, "Espacio", "0", 0.1, 0)
+
         local rTxtB=bRow(24, function() local d=SHAPES[sS]; return d and d.kind=="text" end)
         BInput.bOverallSize=mkNumRow(rTxtB, "Tam. Bloq", "1", 0.1, 0.1)
-    end
-
-    -- BOTONES DE LAYOUT PARA TEXTO (Libre / Fila de 2)
-    local layoutFreeBtn, layoutWrapBtn
-    local function rfLayout()
-        if not layoutFreeBtn then return end
-        layoutFreeBtn.BackgroundColor3=(cLayout=="free") and T.build or T.btnAlt
-        layoutWrapBtn.BackgroundColor3=(cLayout=="wrap2") and T.build or T.btnAlt
-    end
-    do
-        local rTxtLayout=bRow(26, function() local d=SHAPES[sS]; return d and d.kind=="text" end)
-        lbl(rTxtLayout, "Modo", UDim2.new(0,50,1,0), nil, T.sub)
-        layoutFreeBtn=btn(rTxtLayout, "Libre", UDim2.new(0,80,0,24), UDim2.new(0,52,0,0), T.btnAlt)
-        layoutWrapBtn=btn(rTxtLayout, "Fila de 2", UDim2.new(0,80,0,24), UDim2.new(0,138,0,0), T.build)
-        layoutFreeBtn.MouseButton1Click:Connect(function() cLayout="free"; rfLayout(); mPv() end)
-        layoutWrapBtn.MouseButton1Click:Connect(function() cLayout="wrap2"; rfLayout(); mPv() end)
     end
 
     local cBT,cBB
@@ -721,7 +692,7 @@ function FormasModule.init(ENV)
         else cTO=false; cBO=false end
         sR=CFrame.identity; hR=false
         if cP then cDummy.CFrame=CFrame.new(cP) end
-        rfS(); rfC(); rfF(); refreshBuildRows(); rfLayout(); mPv()
+        rfS(); rfC(); rfF(); refreshBuildRows(); mPv()
     end
 
     BPr.MouseButton1Click:Connect(function()
@@ -802,7 +773,7 @@ function FormasModule.init(ENV)
         task.spawn(iniciarConstruccion)
     end)
 
-    rfS(); rfC(); rfF(); rfT(); refreshBuildRows(); rfLayout(); onShapeChange()
+    rfS(); rfC(); rfF(); rfT(); refreshBuildRows(); onShapeChange()
     task.defer(function() task.wait(0.3); rfS() end)
     task.spawn(function() task.wait(1); if centerOnCZ() then bCZ=true; rfBP() end end)
 
