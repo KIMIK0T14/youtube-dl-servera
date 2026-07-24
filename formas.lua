@@ -267,7 +267,8 @@ function FormasModule.init(ENV)
             {label="Corazon",icon="heart",kind="extrude",pts=heartPts,caps="both",fillable=true,useHeight=true,useCount=true,usePoint=false, yOffset=3},
             {label="Cubo",icon="cube",kind="cube3d",caps="both",fillable=false,useHeight=false,useCount=true,usePoint=false, yOffset=20},
             {label="Esfera",icon="sphere",kind="sphere3d",caps=false,fillable=false,useHeight=false,useCount=true,usePoint=false, yOffset=20},
-            {label="Piramide",icon="pyramid",kind="pyramid",caps="bottom",fillable=true,useHeight=true,useCount=true,usePoint=true,pointy=true, yOffset=4},
+            -- CAMBIO 1: Pirámide sin fillable (quitada la opción de relleno de la UI)
+            {label="Piramide",icon="pyramid",kind="pyramid",caps="bottom",fillable=false,useHeight=true,useCount=true,usePoint=true,pointy=true, yOffset=4},
             {label="Capsula",icon="capsule",kind="capsule",caps=false,fillable=false,useHeight=true,useCount=true,usePoint=true,pointy=true, yOffset=24},
             {label="Texto",icon="text",kind="text",caps=false,fillable=false,useHeight=false,useCount=false,usePoint=false, yOffset=2, rot=CFrame.Angles(0, math.rad(-90), 0)},
         }
@@ -417,9 +418,18 @@ function FormasModule.init(ENV)
     do
         local rTxt=bRow(24, function() local d=SHAPES[sS]; return d and d.kind=="text" end)
         lbl(rTxt, "Texto", UDim2.new(0,72,1,0), UDim2.new(0,0,0,0), T.sub)
-        local txtBox=box(rTxt, UDim2.new(1,-132,0,24), UDim2.new(0,104,0,0), "TEXTO")
-        txtBox.TextXAlignment=Enum.TextXAlignment.Center
-        BInput.bText=txtBox
+
+        -- CAMBIO 2: TextBox con ClipsDescendants y alineación izquierda para evitar desborde visual
+        local txtContainer = mk("Frame", rTxt, {
+            Size = UDim2.new(1,-80,0,24),
+            Position = UDim2.new(0,76,0,0),
+            BackgroundTransparency = 1,
+            ClipsDescendants = true,
+        })
+        local txtBox = box(txtContainer, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), "TEXTO")
+        txtBox.TextXAlignment = Enum.TextXAlignment.Left
+        txtBox.PlaceholderText = "Escribe aquí..."
+        BInput.bText = txtBox
         txtBox.FocusLost:Connect(function() mPv() end)
         txtBox:GetPropertyChangedSignal("Text"):Connect(mPv)
 
@@ -756,6 +766,12 @@ function FormasModule.init(ENV)
         if def.kind=="cube3d" then cTO=true; cBO=true
         elseif def.caps=="bottom" then cTO=false; cBO=true
         else cTO=false; cBO=false end
+
+        -- CAMBIO 3: Si es pirámide, forzar relleno "strips" por defecto
+        if def.kind=="pyramid" then
+            cFM="strips"
+            rfF()
+        end
         
         sR = def.rot or CFrame.identity
         hR = sR ~= CFrame.identity
