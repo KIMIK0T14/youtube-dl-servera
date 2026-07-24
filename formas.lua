@@ -25,6 +25,7 @@ function FormasModule.init(ENV)
     local sBMat=Enum.Material.Plastic; local sBCol=Color3.fromRGB(163,162,165)
     local needsRecenter=false
     local DEF_IMG="rbxassetid://12328114032"
+    local baseCPos = nil -- Posición base en el suelo para calcular offsets
 
     local function readRealBlockVisual(blockName)
         local folder=userFolder and userFolder(LP.Name)
@@ -96,7 +97,7 @@ function FormasModule.init(ENV)
                     end
                 end
             end
-            if minC == 6 then minC = 1; maxC = 1 end
+            if minC == 6 then minC = 1; maxC = 1 end -- Para el espacio
             local newRows = {}
             for _, row in ipairs(rows) do
                 newRows[#newRows + 1] = row:sub(minC, maxC)
@@ -209,9 +210,6 @@ function FormasModule.init(ENV)
             local scaleY = math.max(0.1, P.letterHeight or 1)
             local charH = 5 * pxSize * scaleY
 
-            -- Posicionar 2 studs arriba y rotar 90 grados a la derecha
-            local centerCF = CFrame.new(cx, cy + 2, cz) * CFrame.Angles(0, math.rad(-90), 0)
-
             local lines = { text }
             local totalH = #lines * charH + (#lines - 1) * spaceSize
             local startY = totalH / 2
@@ -244,7 +242,7 @@ function FormasModule.init(ENV)
                                     local blockX = currentX + (c - 0.5) * pxSize * scaleX
                                     local blockY = startY - (r - 0.5) * pxSize * scaleY
                                     plan[#plan+1] = {
-                                        cframe = centerCF * CFrame.new(blockX, blockY, 0),
+                                        cframe = CFrame.new(cx + blockX, cy + blockY, cz),
                                         size = Vector3.new(pxSize * scaleX, pxSize * scaleY, thick)
                                     }
                                 end
@@ -258,14 +256,14 @@ function FormasModule.init(ENV)
         end
 
         SHAPES={
-            {label="Circulo",icon="circle",kind="extrude",pts=function() return circPts(96) end,caps="both",fillable=true,useHeight=true,useCount=true,usePoint=false},
-            {label="Cuadrado",icon="square",kind="extrude",pts=function() return polyPts(4,math.pi/4) end,caps="both",fillable=true,useHeight=true,useCount=true,usePoint=false},
-            {label="Corazon",icon="heart",kind="extrude",pts=heartPts,caps="both",fillable=true,useHeight=true,useCount=true,usePoint=false},
-            {label="Cubo",icon="cube",kind="cube3d",caps="both",fillable=false,useHeight=false,useCount=true,usePoint=false},
-            {label="Esfera",icon="sphere",kind="sphere3d",caps=false,fillable=false,useHeight=false,useCount=true,usePoint=false},
-            {label="Piramide",icon="pyramid",kind="pyramid",caps="bottom",fillable=true,useHeight=true,useCount=true,usePoint=true,pointy=true},
-            {label="Capsula",icon="capsule",kind="capsule",caps=false,fillable=false,useHeight=true,useCount=true,usePoint=true,pointy=true},
-            {label="Texto",icon="text",kind="text",caps=false,fillable=false,useHeight=false,useCount=false,usePoint=false},
+            {label="Circulo",icon="circle",kind="extrude",pts=function() return circPts(96) end,caps="both",fillable=true,useHeight=true,useCount=true,usePoint=false, yOffset=3},
+            {label="Cuadrado",icon="square",kind="extrude",pts=function() return polyPts(4,math.pi/4) end,caps="both",fillable=true,useHeight=true,useCount=true,usePoint=false, yOffset=3},
+            {label="Corazon",icon="heart",kind="extrude",pts=heartPts,caps="both",fillable=true,useHeight=true,useCount=true,usePoint=false, yOffset=3},
+            {label="Cubo",icon="cube",kind="cube3d",caps="both",fillable=false,useHeight=false,useCount=true,usePoint=false, yOffset=20},
+            {label="Esfera",icon="sphere",kind="sphere3d",caps=false,fillable=false,useHeight=false,useCount=true,usePoint=false, yOffset=20},
+            {label="Piramide",icon="pyramid",kind="pyramid",caps="bottom",fillable=true,useHeight=true,useCount=true,usePoint=true,pointy=true, yOffset=4},
+            {label="Capsula",icon="capsule",kind="capsule",caps=false,fillable=false,useHeight=true,useCount=true,usePoint=true,pointy=true, yOffset=24},
+            {label="Texto",icon="text",kind="text",caps=false,fillable=false,useHeight=false,useCount=false,usePoint=false, yOffset=2, rot=CFrame.Angles(0, math.rad(-90), 0)},
         }
         gS=function(def,cp,P)
             local plan={}; if not cp then return plan end
@@ -595,7 +593,17 @@ function FormasModule.init(ENV)
 
     local function centerOnCZ()
         local z=closestZone(myRefPos())
-        if z then cP=getZoneSurface(z); sR=CFrame.identity; hR=false; cDummy.CFrame=CFrame.new(cP); ArcAdornee.CFrame=CFrame.new(cP); updateHandles(); mPv(); return true end
+        if z then 
+            baseCPos = getZoneSurface(z)
+            local def = SHAPES[sS]
+            local yOff = def and def.yOffset or 0
+            cP = baseCPos + Vector3.new(0, yOff, 0)
+            sR = def and def.rot or CFrame.identity
+            hR = sR ~= CFrame.identity
+            cDummy.CFrame=CFrame.new(cP)*sR
+            ArcAdornee.CFrame=CFrame.new(cP)*sR
+            updateHandles(); mPv(); return true 
+        end
         return false
     end
 
@@ -612,8 +620,14 @@ function FormasModule.init(ENV)
             rc=RunService.RenderStepped:Connect(function() selBox.Adornee=Mouse.Target end)
             cc=Mouse.Button1Down:Connect(function()
                 local t=Mouse.Target; if t and t:IsA("BasePart") and not t:IsDescendantOf(SG) then
-                    cP=t.Position; sR=CFrame.identity; hR=false
-                    cDummy.CFrame=CFrame.new(cP); ArcAdornee.CFrame=CFrame.new(cP)
+                    baseCPos=t.Position
+                    local def = SHAPES[sS]
+                    local yOff = def and def.yOffset or 0
+                    cP = baseCPos + Vector3.new(0, yOff, 0)
+                    sR = def and def.rot or CFrame.identity
+                    hR = sR ~= CFrame.identity
+                    cDummy.CFrame=CFrame.new(cP)*sR
+                    ArcAdornee.CFrame=CFrame.new(cP)*sR
                     rc:Disconnect(); cc:Disconnect(); selBox.Adornee=nil; bSel2=false
                     BtnBldS.Text="Sel. Posición"; updateHandles(); mPv()
                 end
@@ -663,7 +677,16 @@ function FormasModule.init(ENV)
     do
         local drag2,savedCam,origDP=false,nil,nil
         Handles.MouseButton1Down:Connect(function() if not PB.Visible or lk or not cP then return end; drag2=true; origDP=cDummy.Position; savedCam=Camera.CFrame; Camera.CameraType=Enum.CameraType.Scriptable end)
-        Handles.MouseDrag:Connect(function(face,dist) if not PB.Visible or not drag2 or not origDP then return end; local st=stepVal(moveStepBox); local d=(st>0)and(math.floor(dist/st+0.5)*st)or dist; cP=origDP+cDummy.CFrame:VectorToWorldSpace(Vector3.FromNormalId(face))*d; cDummy.Position=cP; mPv() end)
+        Handles.MouseDrag:Connect(function(face,dist)
+            if not PB.Visible or not drag2 or not origDP then return end
+            local st=stepVal(moveStepBox)
+            local d=(st>0)and(math.floor(dist/st+0.5)*st)or dist
+            local moveVec = cDummy.CFrame:VectorToWorldSpace(Vector3.FromNormalId(face))*d
+            cP = cP + moveVec
+            if baseCPos then baseCPos = baseCPos + moveVec end
+            cDummy.Position = cP
+            mPv()
+        end)
         Handles.MouseButton1Up:Connect(function() if not PB.Visible then return end; drag2=false; savedCam=nil; Camera.CameraType=Enum.CameraType.Custom end)
         local arcDrag,arcStartRot,arcSavedCam=false,nil,nil; local activeArcAxis=nil
         Arc.MouseButton1Down:Connect(function() if lk or not cP then return end; arcDrag=true; arcStartRot=sR; arcSavedCam=Camera.CFrame; Camera.CameraType=Enum.CameraType.Scriptable end)
@@ -714,8 +737,15 @@ function FormasModule.init(ENV)
         if def.kind=="cube3d" then cTO=true; cBO=true
         elseif def.caps=="bottom" then cTO=false; cBO=true
         else cTO=false; cBO=false end
-        sR=CFrame.identity; hR=false
-        if cP then cDummy.CFrame=CFrame.new(cP) end
+        
+        sR = def.rot or CFrame.identity
+        hR = sR ~= CFrame.identity
+        
+        if baseCPos then
+            cP = baseCPos + Vector3.new(0, def.yOffset or 0)
+            cDummy.CFrame=CFrame.new(cP)*sR
+            ArcAdornee.CFrame=CFrame.new(cP)*sR
+        end
         rfS(); rfC(); rfF(); refreshBuildRows(); mPv()
     end
 
