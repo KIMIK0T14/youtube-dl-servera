@@ -462,12 +462,12 @@ function FormasModule.init(ENV)
         if def and def.caps=="bottom" then
             cBT.Visible=false; cBB.Visible=true
             cBB.Text="▼ Tapa base"; cBB.Size=UDim2.new(0,150,0,22)
-            cBB.AnchorPoint=Vector2.new(0,0.5); cBB.Position=UDim2.new(1,-154,0.5,0)
+            cBB.AnchorPoint=Vector2.new(0,0.5); cBB.Position=UDim2.new(1,-150,0.5,0)
         else
             cBT.Visible=true; cBB.Visible=true
             cBT.Text="▲ Tapa Sup"; cBB.Text="▼ Tapa Inf"
-            cBT.Size=UDim2.new(0,88,0,22); cBT.AnchorPoint=Vector2.new(0,0.5); cBT.Position=UDim2.new(1,-184,0.5,0)
-            cBB.Size=UDim2.new(0,88,0,22); cBB.AnchorPoint=Vector2.new(0,0.5); cBB.Position=UDim2.new(1,-92,0.5,0)
+            cBT.Size=UDim2.new(0,88,0,22); cBT.AnchorPoint=Vector2.new(0,0.5); cBT.Position=UDim2.new(1,-180,0.5,0)
+            cBB.Size=UDim2.new(0,88,0,22); cBB.AnchorPoint=Vector2.new(0,0.5); cBB.Position=UDim2.new(1,-88,0.5,0)
         end
         cBT.BackgroundColor3=cTO and WHITE or T.btnAlt
         cBT.TextColor3=cTO and BLACK or T.text
@@ -477,8 +477,8 @@ function FormasModule.init(ENV)
     do
         local rCap=bRow(26,function() local d=SHAPES[sS]; return d and d.caps~=false end)
         local tapL=lbl(rCap,"Tapas",UDim2.new(0,50,1,0),UDim2.new(0,0,0,0),T.sub); tapL.AnchorPoint=Vector2.new(0,0.5); tapL.Position=UDim2.new(0,0,0.5,0)
-        cBT=btn(rCap,"▲ Tapa Sup",UDim2.new(0,88,0,22),nil,T.btnAlt); cBT.AnchorPoint=Vector2.new(0,0.5); cBT.Position=UDim2.new(1,-184,0.5,0)
-        cBB=btn(rCap,"▼ Tapa Inf",UDim2.new(0,88,0,22),nil,T.btnAlt); cBB.AnchorPoint=Vector2.new(0,0.5); cBB.Position=UDim2.new(1,-92,0.5,0)
+        cBT=btn(rCap,"▲ Tapa Sup",UDim2.new(0,88,0,22),nil,T.btnAlt); cBT.AnchorPoint=Vector2.new(0,0.5); cBT.Position=UDim2.new(1,-180,0.5,0)
+        cBB=btn(rCap,"▼ Tapa Inf",UDim2.new(0,88,0,22),nil,T.btnAlt); cBB.AnchorPoint=Vector2.new(0,0.5); cBB.Position=UDim2.new(1,-88,0.5,0)
         cBT.MouseButton1Click:Connect(function() cTO=not cTO; rfC(); mPv() end)
         cBB.MouseButton1Click:Connect(function() cBO=not cBO; rfC(); mPv() end)
     end
