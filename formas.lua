@@ -56,7 +56,7 @@ function FormasModule.init(ENV)
 
     local gS,SHAPES
     do
-        -- Fuente 5x5 compacta (sin huecos a los lados para que Espacio=0 las haga tocar)
+        -- Fuente 5x5 con correcciones en e, y, a, s, f, g, k, x
         local FONT5x5 = {
             A="01110 10001 11111 10001 10001", B="11110 10001 11110 10001 11110", C="01110 10000 10000 10000 01110",
             D="11110 10001 10001 10001 11110", E="11111 10000 11110 10000 11111", F="11111 10000 11110 10000 10000",
@@ -67,21 +67,42 @@ function FormasModule.init(ENV)
             R="11110 10001 11110 10010 10001", S="01111 10000 01110 00001 11110", T="11111 00100 00100 00100 00100",
             U="10001 10001 10001 10001 01110", V="10001 10001 10001 01010 00100", W="10001 10001 10101 11011 10001",
             X="10001 01010 00100 01010 10001", Y="10001 01010 00100 00100 00100", Z="11111 00010 00100 01000 11111",
-            a="00000 01110 00001 01111 10001", b="10000 11110 10001 10001 11110", c="00000 01110 10000 10000 01110",
-            d="00001 01111 10001 10001 01111", e="00000 01110 10111 11000 01110", f="00100 01010 01100 01000 01100",
-            g="00000 01111 10001 01111 00001", h="10000 11110 10001 10001 10001", i="00100 00000 01100 00100 01100",
-            j="00010 00000 00010 10010 01100", k="10000 10010 10100 11000 10001", l="01100 00100 00100 00100 01100",
+            a="01110 00001 01111 10001 01111", b="10000 11110 10001 10001 11110", c="00000 01111 10000 10000 01110",
+            d="00001 01111 10001 10001 01111", e="01110 10001 11111 10000 01110", f="01100 10010 11100 10000 10000",
+            g="01111 10001 01111 00001 01110", h="10000 11110 10001 10001 10001", i="00100 00000 01100 00100 01100",
+            j="00010 00000 00010 10010 01100", k="10001 10010 11100 10010 10001", l="01100 00100 00100 00100 01100",
             m="00000 11010 10101 10101 10001", n="00000 11110 10001 10001 10001", ["ñ"]="01101 00000 11110 10001 10001",
             o="00000 01110 10001 10001 01110", p="00000 11110 10001 11110 10000", q="00000 01111 10001 01111 00001",
-            r="00000 10110 11000 10000 10000", s="00000 01111 10000 00001 11110", t="00100 01110 00100 00100 00110",
+            r="00000 10110 11000 10000 10000", s="01111 10000 01110 00001 11110", t="00100 01110 00100 00100 00110",
             u="00000 10001 10001 10001 01111", v="00000 10001 10001 01010 00100", w="00000 10001 10101 10101 01010",
-            x="00000 00000 10001 01010 10001", y="00000 10001 10001 01111 00001", z="00000 11111 00010 00100 11111",
+            x="10001 01010 00100 01010 10001", y="10001 10001 01111 00001 01110", z="00000 11111 00010 00100 11111",
             ["0"]="01110 10001 10001 10001 01110", ["1"]="00100 01100 00100 00100 01110", ["2"]="01110 00001 01110 10000 11111",
             ["3"]="11110 00001 01110 00001 11110", ["4"]="10001 10001 11111 00001 00001", ["5"]="11111 10000 11110 00001 11110",
             ["6"]="01110 10000 11110 10001 01110", ["7"]="11111 00001 00010 00100 00100", ["8"]="01110 10001 01110 10001 01110",
             ["9"]="01110 10001 01111 00001 01110", [" "]="00000 00000 00000 00000 00000", ["!"]="00100 00100 00100 00000 00100",
             ["?"]="01110 00001 00110 00000 00100", ["."]="00000 00000 00000 00000 00100", [","]="00000 00000 00000 00100 01000",
         }
+
+        -- Función para recortar los espacios vacíos a los lados de cada caracter
+        local TRIMMED_FONT = {}
+        for k, v in pairs(FONT5x5) do
+            local rows = string.split(v, " ")
+            local minC, maxC = 6, 0
+            for _, row in ipairs(rows) do
+                for c = 1, #row do
+                    if row:sub(c, c) == "1" then
+                        if c < minC then minC = c end
+                        if c > maxC then maxC = c end
+                    end
+                end
+            end
+            if minC == 6 then minC = 1; maxC = 1 end
+            local newRows = {}
+            for _, row in ipairs(rows) do
+                newRows[#newRows + 1] = row:sub(minC, maxC)
+            end
+            TRIMMED_FONT[k] = { str = table.concat(newRows, " "), w = (maxC - minC + 1) }
+        end
 
         local function circPts(n) local p={}; for i=0,n-1 do local a=(i/n)*math.pi*2; p[#p+1]=Vector2.new(math.cos(a),math.sin(a)) end; return p end
         local function polyPts(sides,off) local p={}; for k=0,sides-1 do local a=off+k*(2*math.pi/sides); p[#p+1]=Vector2.new(math.cos(a),math.sin(a)) end; return p end
@@ -183,36 +204,39 @@ function FormasModule.init(ENV)
             if #text == 0 then return end
             local pxSize = math.max(0.1, P.overallSize or 1)
             local thick = math.max(0.1, P.thick or 1)
-            local spaceSize = math.max(0, P.letterSpacing or 0) * pxSize
+            local spaceSize = math.max(0, P.letterSpacing or 1) * pxSize
             local scaleX = math.max(0.1, P.letterWidth or 1)
             local scaleY = math.max(0.1, P.letterHeight or 1)
-            local charW = 5 * pxSize * scaleX
             local charH = 5 * pxSize * scaleY
-            local spaceW = 2 * pxSize * scaleX
+
+            -- Posicionar 2 studs arriba y rotar 90 grados a la derecha
+            local centerCF = CFrame.new(cx, cy + 2, cz) * CFrame.Angles(0, math.rad(-90), 0)
 
             local lines = { text }
             local totalH = #lines * charH + (#lines - 1) * spaceSize
-            local startY = cy + totalH / 2
+            local startY = totalH / 2
 
             for _, line in ipairs(lines) do
                 local lineWidth = 0
                 for i = 1, #line do
                     local ch = line:sub(i,i)
                     local isSpace = (ch == " ")
-                    local w = isSpace and spaceW or charW
-                    lineWidth = lineWidth + w
+                    local charData = TRIMMED_FONT[ch] or TRIMMED_FONT[ch:upper()] or TRIMMED_FONT["?"]
+                    local w = isSpace and 2 or charData.w
+                    lineWidth = lineWidth + (w * pxSize * scaleX)
                     if i < #line then lineWidth = lineWidth + spaceSize end
                 end
 
-                local currentX = cx - lineWidth / 2
+                local currentX = -lineWidth / 2
                 for i = 1, #line do
                     local ch = line:sub(i,i)
                     local isSpace = (ch == " ")
-                    local w = isSpace and spaceW or charW
+                    local charData = isSpace and {str="0", w=2} or (TRIMMED_FONT[ch] or TRIMMED_FONT[ch:upper()] or TRIMMED_FONT["?"])
+                    local w = charData.w
+                    local wSize = w * pxSize * scaleX
 
                     if not isSpace then
-                        local fontStr = FONT5x5[ch] or FONT5x5[ch:upper()] or FONT5x5["?"]
-                        local rows = string.split(fontStr, " ")
+                        local rows = string.split(charData.str, " ")
                         for r=1, #rows do
                             local rowStr = rows[r]
                             for c=1, #rowStr do
@@ -220,14 +244,14 @@ function FormasModule.init(ENV)
                                     local blockX = currentX + (c - 0.5) * pxSize * scaleX
                                     local blockY = startY - (r - 0.5) * pxSize * scaleY
                                     plan[#plan+1] = {
-                                        cframe = CFrame.new(blockX, blockY, cz),
+                                        cframe = centerCF * CFrame.new(blockX, blockY, 0),
                                         size = Vector3.new(pxSize * scaleX, pxSize * scaleY, thick)
                                     }
                                 end
                             end
                         end
                     end
-                    currentX = currentX + w + spaceSize
+                    currentX = currentX + wSize + spaceSize
                 end
                 startY = startY - charH - spaceSize
             end
@@ -302,7 +326,7 @@ function FormasModule.init(ENV)
             overallSize=math.max(0.1,tonumber(BInput.bOverallSize and BInput.bOverallSize.Text) or 1),
             letterWidth=math.max(0.1,tonumber(BInput.bLetterWidth and BInput.bLetterWidth.Text) or 1),
             letterHeight=math.max(0.1,tonumber(BInput.bLetterHeight and BInput.bLetterHeight.Text) or 1),
-            letterSpacing=math.max(0,tonumber(BInput.bLetterSpace and BInput.bLetterSpace.Text) or 0),
+            letterSpacing=math.max(0,tonumber(BInput.bLetterSpace and BInput.bLetterSpace.Text) or 1),
         }
     end
 
@@ -408,7 +432,7 @@ function FormasModule.init(ENV)
         BInput.bLetterHeight=mkNumRow(rTxtH, "Alto L.", "1", 0.1, 0.1)
 
         local rTxtS=bRow(24, function() local d=SHAPES[sS]; return d and d.kind=="text" end)
-        BInput.bLetterSpace=mkNumRow(rTxtS, "Espacio", "0", 0.1, 0)
+        BInput.bLetterSpace=mkNumRow(rTxtS, "Espacio", "1", 0.1, 0)
 
         local rTxtB=bRow(24, function() local d=SHAPES[sS]; return d and d.kind=="text" end)
         BInput.bOverallSize=mkNumRow(rTxtB, "Tam. Bloq", "1", 0.1, 0.1)
