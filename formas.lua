@@ -57,7 +57,7 @@ function FormasModule.init(ENV)
 
     local gS,SHAPES
     do
-        -- Fuente 5x5 con correcciones en e, y, a, s, f, g, k, x
+        -- Fuente 5x5 (f minúscula arreglada)
         local FONT5x5 = {
             A="01110 10001 11111 10001 10001", B="11110 10001 11110 10001 11110", C="01110 10000 10000 10000 01110",
             D="11110 10001 10001 10001 11110", E="11111 10000 11110 10000 11111", F="11111 10000 11110 10000 10000",
@@ -69,7 +69,7 @@ function FormasModule.init(ENV)
             U="10001 10001 10001 10001 01110", V="10001 10001 10001 01010 00100", W="10001 10001 10101 11011 10001",
             X="10001 01010 00100 01010 10001", Y="10001 01010 00100 00100 00100", Z="11111 00010 00100 01000 11111",
             a="01110 00001 01111 10001 01111", b="10000 11110 10001 10001 11110", c="00000 01111 10000 10000 01110",
-            d="00001 01111 10001 10001 01111", e="01110 10001 11111 10000 01110", f="01100 10010 11100 10000 10000",
+            d="00001 01111 10001 10001 01111", e="01110 10001 11111 10000 01110", f="00100 01000 01110 01000 01000",
             g="01111 10001 01111 00001 01110", h="10000 11110 10001 10001 10001", i="00100 00000 01100 00100 01100",
             j="00010 00000 00010 10010 01100", k="10001 10010 11100 10010 10001", l="01100 00100 00100 00100 01100",
             m="00000 11010 10101 10101 10001", n="00000 11110 10001 10001 10001", ["ñ"]="01101 00000 11110 10001 10001",
@@ -487,17 +487,22 @@ function FormasModule.init(ENV)
 
     do
         local rColorMat=bRow(28)
-        local colBtnInd=mk("Frame",rColorMat,{Size=UDim2.new(0,22,0,22),Position=UDim2.new(0,4,0.5,-11),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0})
+        -- Hacer el círculo de color un TextButton para poder clickearlo
+        local colBtnInd=mk("TextButton",rColorMat,{Size=UDim2.new(0,22,0,22),Position=UDim2.new(0,4,0.5,-11),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,Text="",AutoButtonColor=false})
         corner(colBtnInd,11); stroke(colBtnInd,T.text,1.5)
         local bOP=btn(rColorMat,"Elegir color",UDim2.new(0,80,0,24),UDim2.new(0,30,0.5,-12),T.btn)
         local bTC=btn(rColorMat,"ON",UDim2.new(0,36,0,24),UDim2.new(0,114,0.5,-12),T.btnAlt)
         local function refCB() bTC.BackgroundColor3=bUC and T.build or T.btnAlt; bTC.Text=bUC and "ON" or "OFF" end
         refCB()
         bTC.MouseButton1Click:Connect(function() bUC=not bUC; refCB(); mPv() end)
-        bOP.MouseButton1Click:Connect(function()
+        
+        local function openColorPicker()
             openCP(selColor,function(col) selColor=col; colBtnInd.BackgroundColor3=col; bUC=true; refCB(); mPv() end,
             function(col) selColor=col; colBtnInd.BackgroundColor3=col; if bUC then mPv() end end)
-        end)
+        end
+        bOP.MouseButton1Click:Connect(openColorPicker)
+        colBtnInd.MouseButton1Click:Connect(openColorPicker)
+        
         matPickBtn=mk("TextButton",rColorMat,{Size=UDim2.new(1,-160,0,24),Position=UDim2.new(0,156,0.5,-12),BackgroundColor3=T.input,BorderSizePixel=0,Font=Enum.Font.GothamSemibold,TextSize=10,Text="",TextColor3=T.text,TextXAlignment=Enum.TextXAlignment.Left})
         corner(matPickBtn,6)
         mIconRef=mk("ImageLabel",matPickBtn,{Size=UDim2.new(0,20,0,20),Position=UDim2.new(0,4,0.5,-10),BackgroundTransparency=1,BorderSizePixel=0})
@@ -675,19 +680,27 @@ function FormasModule.init(ENV)
     PB:GetPropertyChangedSignal("Visible"):Connect(function() if PB.Visible and needsRecenter then needsRecenter=false; waitAndRecenter() end end)
 
     do
-        local drag2,savedCam,origDP=false,nil,nil
-        Handles.MouseButton1Down:Connect(function() if not PB.Visible or lk or not cP then return end; drag2=true; origDP=cDummy.Position; savedCam=Camera.CFrame; Camera.CameraType=Enum.CameraType.Scriptable end)
+        local drag2,savedCam,origDP,origBaseCPos=false,nil,nil,nil
+        Handles.MouseButton1Down:Connect(function() 
+            if not PB.Visible or lk or not cP then return end
+            drag2=true
+            origDP=cDummy.Position
+            origBaseCPos=baseCPos
+            savedCam=Camera.CFrame
+            Camera.CameraType=Enum.CameraType.Scriptable
+        end)
         Handles.MouseDrag:Connect(function(face,dist)
             if not PB.Visible or not drag2 or not origDP then return end
             local st=stepVal(moveStepBox)
             local d=(st>0)and(math.floor(dist/st+0.5)*st)or dist
             local moveVec = cDummy.CFrame:VectorToWorldSpace(Vector3.FromNormalId(face))*d
-            cP = cP + moveVec
-            if baseCPos then baseCPos = baseCPos + moveVec end
+            cP = origDP + moveVec
+            if origBaseCPos then baseCPos = origBaseCPos + moveVec end
             cDummy.Position = cP
             mPv()
         end)
         Handles.MouseButton1Up:Connect(function() if not PB.Visible then return end; drag2=false; savedCam=nil; Camera.CameraType=Enum.CameraType.Custom end)
+        
         local arcDrag,arcStartRot,arcSavedCam=false,nil,nil; local activeArcAxis=nil
         Arc.MouseButton1Down:Connect(function() if lk or not cP then return end; arcDrag=true; arcStartRot=sR; arcSavedCam=Camera.CFrame; Camera.CameraType=Enum.CameraType.Scriptable end)
         Arc.MouseDrag:Connect(function(axis,relAngle) if not arcDrag then return end; if activeArcAxis~=axis then activeArcAxis=axis end; local av=(axis==Enum.Axis.X and Vector3.xAxis)or(axis==Enum.Axis.Y and Vector3.yAxis)or Vector3.zAxis; local st=stepVal(rotStepBox); local snapped=(st>0)and math.rad(math.floor(math.deg(relAngle)/st+0.5)*st)or relAngle; sR=arcStartRot*CFrame.fromAxisAngle(av,snapped); hR=true; if cP then cDummy.CFrame=CFrame.new(cP)*sR end; mPv() end)
