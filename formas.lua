@@ -27,6 +27,10 @@ function FormasModule.init(ENV)
     local DEF_IMG="rbxassetid://12328114032"
     local baseCPos = nil -- Posición base en el suelo para calcular offsets
 
+    -- Definir colores para estados activos
+    local WHITE = Color3.fromRGB(255, 255, 255)
+    local BLACK = Color3.fromRGB(0, 0, 0)
+
     local function readRealBlockVisual(blockName)
         local folder=userFolder and userFolder(LP.Name)
         if folder then for _,p in ipairs(folder:GetChildren()) do if p:IsA("BasePart") and p.Name==blockName then return p.Material,p.Color end end end
@@ -458,34 +462,39 @@ function FormasModule.init(ENV)
         if def and def.caps=="bottom" then
             cBT.Visible=false; cBB.Visible=true
             cBB.Text="▼ Tapa base"; cBB.Size=UDim2.new(0,150,0,22)
-            cBB.AnchorPoint=Vector2.new(0,0.5); cBB.Position=UDim2.new(0,52,0.5,0)
+            cBB.AnchorPoint=Vector2.new(0,0.5); cBB.Position=UDim2.new(1,-154,0.5,0)
         else
             cBT.Visible=true; cBB.Visible=true
             cBT.Text="▲ Tapa Sup"; cBB.Text="▼ Tapa Inf"
-            cBT.Size=UDim2.new(0,88,0,22); cBT.AnchorPoint=Vector2.new(0,0.5); cBT.Position=UDim2.new(0,52,0.5,0)
-            cBB.Size=UDim2.new(0,88,0,22); cBB.AnchorPoint=Vector2.new(0,0.5); cBB.Position=UDim2.new(0,146,0.5,0)
+            cBT.Size=UDim2.new(0,88,0,22); cBT.AnchorPoint=Vector2.new(0,0.5); cBT.Position=UDim2.new(1,-184,0.5,0)
+            cBB.Size=UDim2.new(0,88,0,22); cBB.AnchorPoint=Vector2.new(0,0.5); cBB.Position=UDim2.new(1,-92,0.5,0)
         end
-        cBT.BackgroundColor3=cTO and T.build or T.btnAlt
-        cBB.BackgroundColor3=cBO and T.build or T.btnAlt
+        cBT.BackgroundColor3=cTO and WHITE or T.btnAlt
+        cBT.TextColor3=cTO and BLACK or T.text
+        cBB.BackgroundColor3=cBO and WHITE or T.btnAlt
+        cBB.TextColor3=cBO and BLACK or T.text
     end
     do
         local rCap=bRow(26,function() local d=SHAPES[sS]; return d and d.caps~=false end)
         local tapL=lbl(rCap,"Tapas",UDim2.new(0,50,1,0),UDim2.new(0,0,0,0),T.sub); tapL.AnchorPoint=Vector2.new(0,0.5); tapL.Position=UDim2.new(0,0,0.5,0)
-        cBT=btn(rCap,"▲ Tapa Sup",UDim2.new(0,88,0,22),nil,T.btnAlt); cBT.AnchorPoint=Vector2.new(0,0.5); cBT.Position=UDim2.new(0,52,0.5,0)
-        cBB=btn(rCap,"▼ Tapa Inf",UDim2.new(0,88,0,22),nil,T.btnAlt); cBB.AnchorPoint=Vector2.new(0,0.5); cBB.Position=UDim2.new(0,146,0.5,0)
+        cBT=btn(rCap,"▲ Tapa Sup",UDim2.new(0,88,0,22),nil,T.btnAlt); cBT.AnchorPoint=Vector2.new(0,0.5); cBT.Position=UDim2.new(1,-184,0.5,0)
+        cBB=btn(rCap,"▼ Tapa Inf",UDim2.new(0,88,0,22),nil,T.btnAlt); cBB.AnchorPoint=Vector2.new(0,0.5); cBB.Position=UDim2.new(1,-92,0.5,0)
         cBT.MouseButton1Click:Connect(function() cTO=not cTO; rfC(); mPv() end)
         cBB.MouseButton1Click:Connect(function() cBO=not cBO; rfC(); mPv() end)
     end
 
     local fSB,fGB
     local function rfF()
-        fSB.BackgroundColor3=(cFM=="strips") and T.build or T.btnAlt
-        fGB.BackgroundColor3=(cFM=="grid") and T.build or T.btnAlt
+        fSB.BackgroundColor3=(cFM=="strips") and WHITE or T.btnAlt
+        fSB.TextColor3=(cFM=="strips") and BLACK or T.text
+        fGB.BackgroundColor3=(cFM=="grid") and WHITE or T.btnAlt
+        fGB.TextColor3=(cFM=="grid") and BLACK or T.text
     end
     do
         local rFill=bRow(24,function() local d=SHAPES[sS]; return d and d.fillable==true and(cTO or cBO) end)
         lbl(rFill,"Relleno",UDim2.new(0,50,1,0),nil,T.sub)
-        fSB=btn(rFill,"Tiras",UDim2.new(0,80,0,24),UDim2.new(0,52,0,0),T.build)
+        fSB=btn(rFill,"Tiras",UDim2.new(0,80,0,24),UDim2.new(0,52,0,0),WHITE)
+        fSB.TextColor3=BLACK
         fGB=btn(rFill,"Bloques",UDim2.new(0,80,0,24),UDim2.new(0,138,0,0),T.btnAlt)
         fSB.MouseButton1Click:Connect(function() cFM="strips"; rfF(); mPv() end)
         fGB.MouseButton1Click:Connect(function() cFM="grid"; rfF(); mPv() end)
@@ -508,7 +517,7 @@ function FormasModule.init(ENV)
         corner(colBtnInd,11); stroke(colBtnInd,T.text,1.5)
         local bOP=btn(rColorMat,"Elegir color",UDim2.new(0,80,0,24),UDim2.new(0,30,0.5,-12),T.btn)
         local bTC=btn(rColorMat,"ON",UDim2.new(0,36,0,24),UDim2.new(0,114,0.5,-12),T.btnAlt)
-        local function refCB() bTC.BackgroundColor3=bUC and T.build or T.btnAlt; bTC.Text=bUC and "ON" or "OFF" end
+        local function refCB() bTC.BackgroundColor3=bUC and WHITE or T.btnAlt; bTC.TextColor3=bUC and BLACK or T.text; bTC.Text=bUC and "ON" or "OFF" end
         refCB()
         bTC.MouseButton1Click:Connect(function() bUC=not bUC; refCB(); mPv() end)
         
@@ -603,8 +612,8 @@ function FormasModule.init(ENV)
     local BB,SL,BPr; local bCZ=true; local BtnBldC,BtnBldS
     local function rfBP()
         if not BtnBldC or not BtnBldS then return end
-        BtnBldC.BackgroundColor3=bCZ and T.accent or T.btnAlt; BtnBldC.TextColor3=bCZ and T.bg or T.text
-        BtnBldS.BackgroundColor3=(not bCZ) and T.accent or T.btnAlt; BtnBldS.TextColor3=(not bCZ) and T.bg or T.text
+        BtnBldC.BackgroundColor3=bCZ and WHITE or T.btnAlt; BtnBldC.TextColor3=bCZ and BLACK or T.text
+        BtnBldS.BackgroundColor3=(not bCZ) and WHITE or T.btnAlt; BtnBldS.TextColor3=(not bCZ) and BLACK or T.text
     end
 
     local function getZoneSurface(z)
@@ -630,7 +639,7 @@ function FormasModule.init(ENV)
 
     do
         local rPos=bRow(28)
-        BtnBldC=btn(rPos,"Centro zona",UDim2.new(0.5,-3,1,0),UDim2.new(0,0,0,0),T.accent); BtnBldC.TextColor3=T.bg
+        BtnBldC=btn(rPos,"Centro zona",UDim2.new(0.5,-3,1,0),UDim2.new(0,0,0,0),WHITE); BtnBldC.TextColor3=BLACK
         BtnBldS=btn(rPos,"Sel. Posición",UDim2.new(0.5,-3,1,0),UDim2.new(0.5,3,0,0),T.btnAlt)
         BtnBldC.MouseButton1Click:Connect(function() bCZ=true; rfBP(); centerOnCZ() end)
         local bSel2=false
@@ -656,7 +665,7 @@ function FormasModule.init(ENV)
         end)
 
         local rPrev=bRow(32)
-        BPr=btn(rPrev,"Vista previa: On",UDim2.new(1,-80,1,0),nil,T.accent); BPr.TextColor3=T.bg
+        BPr=btn(rPrev,"Vista previa: On",UDim2.new(1,-80,1,0),nil,WHITE); BPr.TextColor3=BLACK
         local prevAlphaFrame=mk("Frame",rPrev,{Size=UDim2.new(0,76,1,0),Position=UDim2.new(1,-76,0,0),BackgroundColor3=T.btnAlt,BorderSizePixel=0}); corner(prevAlphaFrame,6)
         local pAlphaDown=btn(prevAlphaFrame,"-",UDim2.new(0,22,1,0),UDim2.new(0,0,0,0),T.btnAlt)
         local pAlphaLbl=lbl(prevAlphaFrame,math.floor(pA*100).."%",UDim2.new(0,28,1,0),UDim2.new(0,22,0,0),T.text); pAlphaLbl.TextXAlignment=Enum.TextXAlignment.Center; pAlphaLbl.Font=Enum.Font.GothamBold; pAlphaLbl.TextSize=10
@@ -666,7 +675,7 @@ function FormasModule.init(ENV)
         pAlphaUp.MouseButton1Click:Connect(function() setAlpha(pA+0.10) end)
 
         local rBld=bRow(32)
-        BB=btn(rBld,"Construir",UDim2.new(1,0,1,0),nil,T.build); BB.TextColor3=Color3.new(0,0,0)
+        BB=btn(rBld,"Construir",UDim2.new(1,0,1,0),nil,WHITE); BB.TextColor3=BLACK
         SL=mk("TextLabel",BB,{Size=UDim2.new(0,100,0,12),Position=UDim2.new(1,-104,1,-16),Text="listo",TextColor3=Color3.new(0,0,0),BackgroundTransparency=1,Font=Enum.Font.Gotham,TextSize=9,TextXAlignment=Enum.TextXAlignment.Right})
     end
     rfBP()
@@ -788,8 +797,8 @@ function FormasModule.init(ENV)
         if lk then return end
         pOn=not pOn
         BPr.Text=pOn and "Vista previa: On" or "Vista previa: Off"
-        BPr.BackgroundColor3=pOn and T.accent or T.btnAlt
-        BPr.TextColor3=pOn and T.bg or T.text
+        BPr.BackgroundColor3=pOn and WHITE or T.btnAlt
+        BPr.TextColor3=pOn and BLACK or T.text
         mPv()
     end)
 
@@ -811,7 +820,7 @@ function FormasModule.init(ENV)
         local bTool=getActiveTool("BuildingTool"); if not bTool then setStat("falta BuildingTool",T.danger); return end
         local sTool=getActiveTool("ScalingTool"); local pTool=getActiveTool("PaintingTool")
         bS.running=true; bS.cancel=false; gbRunRef.value=true
-        BB.Text="Cancelar"; BB.BackgroundColor3=T.danger; setLocked(true); hPv()
+        BB.Text="Cancelar"; BB.BackgroundColor3=T.danger; BB.TextColor3=BLACK; setLocked(true); hPv()
         local ok2,err=pcall(function()
             local plan=gS(SHAPES[sS],cP,rP()); local total=#plan
             if not sharing then equipTool(bTool); equipTool(sTool); if bUC and pTool then equipTool(pTool) end end
@@ -853,7 +862,7 @@ function FormasModule.init(ENV)
         local hum=LP.Character and LP.Character:FindFirstChild("Humanoid")
         if hum then pcall(function() hum:UnequipTools() end) end
         bS.running=false; bS.cancel=false; gbRunRef.value=false
-        BB.Text="Construir"; BB.BackgroundColor3=T.build; BB.TextColor3=Color3.new(0,0,0)
+        BB.Text="Construir"; BB.BackgroundColor3=WHITE; BB.TextColor3=BLACK
         setLocked(false)
         if pOn then mPv() end
     end
