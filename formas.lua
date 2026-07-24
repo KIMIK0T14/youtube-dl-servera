@@ -169,6 +169,7 @@ function FormasModule.init(ENV)
                 gz=gz+step
             end
         end
+        -- siempre usa strips (capFillMode eliminado de la pirámide)
         local function fillCap(plan,u,cx,cy,cz,r,th,step) if capFillMode=="grid" then fillGrid(plan,u,cx,cy,cz,r,th,step) else fillStrips(plan,u,cx,cy,cz,r,th,step) end end
         local function buildExtruded(plan,u,cx,cy,cz,r,h,th,count,cT,cB)
             local per=perimOf(u,r); local seg=per/math.max(1,count)
@@ -205,7 +206,8 @@ function FormasModule.init(ENV)
             local faces={{dir=Vector3.new(1,0,0),side=Vector3.new(0,0,1)},{dir=Vector3.new(-1,0,0),side=Vector3.new(0,0,1)},{dir=Vector3.new(0,0,1),side=Vector3.new(1,0,0)},{dir=Vector3.new(0,0,-1),side=Vector3.new(1,0,0)}}
             local function prof(t) return hs*((1-t)^expo) end
             for _,f in ipairs(faces) do for i=0,layers-1 do local t0=i/layers; local t1=(i+1)/layers; local tc=(i+0.5)/layers; local dc=prof(tc); local yc=(cy-h/2)+tc*h; local pBot=f.dir*prof(t0)+Vector3.new(0,(cy-h/2)+t0*h,0); local pTop=f.dir*prof(t1)+Vector3.new(0,(cy-h/2)+t1*h,0); local u=(pTop-pBot); local sL=u.Magnitude; if sL<1e-4 then u=Vector3.new(0,1,0); sL=lH else u=u.Unit end; local v=f.side; local n2=u:Cross(v); if n2:Dot(f.dir)<0 then v=-v; n2=u:Cross(v) end; n2=n2.Unit; v=v.Unit; local width=2*dc; if width<1e-3 then width=sL*0.5 end; plan[#plan+1]={cframe=CFrame.fromMatrix(Vector3.new(cx,0,cz)+f.dir*dc+Vector3.new(0,yc,0),v,n2), size=Vector3.new(width*1.04,th,sL*1.05)} end end
-            if cB then fillCap(plan,SQ,cx,cy-h/2+th/2,cz,hs,th,(2*hs)/math.max(4,layers)) end
+            -- pirámide siempre usa fillStrips para la base
+            if cB then fillStrips(plan,SQ,cx,cy-h/2+th/2,cz,hs,th,(2*hs)/math.max(4,layers)) end
         end
         local function buildCapsule(plan,cx,cy,cz,r,h,th,count,p01)
             local circle=circPts(96); local capL=r*(1+p01*1.5); local bodyH=math.max(h,0)
@@ -219,7 +221,8 @@ function FormasModule.init(ENV)
             {label="Corazon",  icon="heart",   kind="extrude",  pts=heartPts,                                caps="both",   fillable=true,  useHeight=true,  useCount=true, usePoint=false},
             {label="Cubo",     icon="cube",    kind="cube3d",   caps="both",   fillable=false, useHeight=false, useCount=true, usePoint=false},
             {label="Esfera",   icon="sphere",  kind="sphere3d", caps=false,    fillable=false, useHeight=false, useCount=true, usePoint=false},
-            {label="Piramide", icon="pyramid", kind="pyramid",  caps="bottom", fillable=true,  useHeight=true,  useCount=true, usePoint=true, pointy=true},
+            -- CAMBIO: pirámide con fillable=false para ocultar la fila de Relleno
+            {label="Piramide", icon="pyramid", kind="pyramid",  caps="bottom", fillable=false, useHeight=true,  useCount=true, usePoint=true, pointy=true},
             {label="Capsula",  icon="capsule", kind="capsule",  caps=false,    fillable=false, useHeight=true,  useCount=true, usePoint=true, pointy=true},
         }
         generateShape = function(def, cp, P)
@@ -371,34 +374,44 @@ function FormasModule.init(ENV)
 
     -- ══════════════════════════════════════════════
     -- UI ORDEN 3: Tapas
+    -- CAMBIO: botones alineados con los campos numéricos (mismo offset que el - y el campo)
     -- ══════════════════════════════════════════════
     local capBtnTop, capBtnBot
     local function refreshCaps()
         local def=SHAPES[selShape]
         if def and def.caps=="bottom" then
             capBtnTop.Visible=false; capBtnBot.Visible=true
-            capBtnBot.Text="▼ Tapa base"; capBtnBot.Size=UDim2.new(0,150,0,22)
-            capBtnBot.AnchorPoint=Vector2.new(0,0.5); capBtnBot.Position=UDim2.new(0,52,0.5,0)
+            -- CAMBIO: alineado con campo numérico: empieza en x=76 (donde empieza el botón -)
+            capBtnBot.Text="▼ Tapa base"
+            capBtnBot.Size=UDim2.new(1,-100,0,22)
+            capBtnBot.AnchorPoint=Vector2.new(0,0.5)
+            capBtnBot.Position=UDim2.new(0,76,0.5,0)
         else
             capBtnTop.Visible=true; capBtnBot.Visible=true
             capBtnTop.Text="▲ Tapa Sup"; capBtnBot.Text="▼ Tapa Inf"
-            capBtnTop.Size=UDim2.new(0,88,0,22); capBtnTop.AnchorPoint=Vector2.new(0,0.5); capBtnTop.Position=UDim2.new(0,52,0.5,0)
-            capBtnBot.Size=UDim2.new(0,88,0,22); capBtnBot.AnchorPoint=Vector2.new(0,0.5); capBtnBot.Position=UDim2.new(0,146,0.5,0)
+            -- CAMBIO: los dos botones arrancan en x=76, separados con un gap pequeño
+            local halfW = UDim2.new(0.5,-54,0,22)
+            capBtnTop.Size=halfW; capBtnTop.AnchorPoint=Vector2.new(0,0.5); capBtnTop.Position=UDim2.new(0,76,0.5,0)
+            capBtnBot.Size=halfW; capBtnBot.AnchorPoint=Vector2.new(0,0.5); capBtnBot.Position=UDim2.new(0.5,2,0.5,0)
         end
         capBtnTop.BackgroundColor3=capTopOn and T.build or T.btnAlt
         capBtnBot.BackgroundColor3=capBotOn and T.build or T.btnAlt
     end
     do
         local rCap=bRow(26,function() local d=SHAPES[selShape]; return d and d.caps~=false end)
-        local tapL=lbl(rCap,"Tapas",UDim2.new(0,50,1,0),UDim2.new(0,0,0,0),T.sub); tapL.AnchorPoint=Vector2.new(0,0.5); tapL.Position=UDim2.new(0,0,0.5,0)
-        capBtnTop=btn(rCap,"▲ Tapa Sup",UDim2.new(0,88,0,22),nil,T.btnAlt); capBtnTop.AnchorPoint=Vector2.new(0,0.5); capBtnTop.Position=UDim2.new(0,52,0.5,0)
-        capBtnBot=btn(rCap,"▼ Tapa Inf",UDim2.new(0,88,0,22),nil,T.btnAlt); capBtnBot.AnchorPoint=Vector2.new(0,0.5); capBtnBot.Position=UDim2.new(0,146,0.5,0)
+        local tapL=lbl(rCap,"Tapas",UDim2.new(0,72,1,0),UDim2.new(0,0,0,0),T.sub)
+        tapL.AnchorPoint=Vector2.new(0,0.5); tapL.Position=UDim2.new(0,0,0.5,0)
+        capBtnTop=btn(rCap,"▲ Tapa Sup",UDim2.new(0,88,0,22),nil,T.btnAlt)
+        capBtnTop.AnchorPoint=Vector2.new(0,0.5); capBtnTop.Position=UDim2.new(0,76,0.5,0)
+        capBtnBot=btn(rCap,"▼ Tapa Inf",UDim2.new(0,88,0,22),nil,T.btnAlt)
+        capBtnBot.AnchorPoint=Vector2.new(0,0.5); capBtnBot.Position=UDim2.new(0.5,2,0.5,0)
         capBtnTop.MouseButton1Click:Connect(function() capTopOn=not capTopOn; refreshCaps(); markPreview() end)
         capBtnBot.MouseButton1Click:Connect(function() capBotOn=not capBotOn; refreshCaps(); markPreview() end)
     end
 
     -- ══════════════════════════════════════════════
     -- UI ORDEN 4: Relleno de tapas
+    -- CAMBIO: fillable=false en pirámide, así esta fila solo aparece para formas que lo usan
     -- ══════════════════════════════════════════════
     local fillStripBtn, fillGridBtn
     local function refreshFill()
@@ -407,15 +420,16 @@ function FormasModule.init(ENV)
     end
     do
         local rFill=bRow(24,function() local d=SHAPES[selShape]; return d and d.fillable==true and(capTopOn or capBotOn) end)
-        lbl(rFill,"Relleno",UDim2.new(0,50,1,0),nil,T.sub)
-        fillStripBtn=btn(rFill,"Tiras",UDim2.new(0,80,0,24),UDim2.new(0,52,0,0),T.build)
-        fillGridBtn=btn(rFill,"Bloques",UDim2.new(0,80,0,24),UDim2.new(0,138,0,0),T.btnAlt)
+        lbl(rFill,"Relleno",UDim2.new(0,72,1,0),nil,T.sub)
+        fillStripBtn=btn(rFill,"Tiras",UDim2.new(0.5,-54,0,24),UDim2.new(0,76,0,0),T.build)
+        fillGridBtn=btn(rFill,"Bloques",UDim2.new(0.5,-54,0,24),UDim2.new(0.5,2,0,0),T.btnAlt)
         fillStripBtn.MouseButton1Click:Connect(function() capFillMode="strips"; refreshFill(); markPreview() end)
         fillGridBtn.MouseButton1Click:Connect(function() capFillMode="grid"; refreshFill(); markPreview() end)
     end
 
     -- ══════════════════════════════════════════════
-    -- UI ORDEN 5: COLOR & MATERIAL COMBINADO (Ahorro vertical)
+    -- UI ORDEN 5: COLOR & MATERIAL COMBINADO
+    -- CAMBIO: color picker más pequeño, sin título, cierra al tocar fondo oscuro
     -- ══════════════════════════════════════════════
     local selBlockNameRef = {value="PlasticBlock"}
     local matPickOv, matPickBtn
@@ -434,6 +448,51 @@ function FormasModule.init(ENV)
             markPreview()
         end)
     end
+
+    -- Color Picker overlay rediseñado: más pequeño, sin título, cierra al tocar fondo
+    local cpOverlay = mk("Frame", ENV.Win, {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundColor3 = Color3.new(0, 0, 0),
+        BackgroundTransparency = 0.5,
+        BorderSizePixel = 0,
+        Visible = false,
+        ZIndex = 70
+    })
+    -- Botón transparente que cubre todo el fondo → cerrar al tocar fuera
+    mk("TextButton", cpOverlay, {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = "",
+        ZIndex = 70,
+        AutoButtonColor = false
+    }).MouseButton1Click:Connect(function() cpOverlay.Visible = false end)
+
+    -- Caja interior más compacta (sin título arriba)
+    local cpBox = mk("Frame", cpOverlay, {
+        Size = UDim2.new(0.78, 0, 0, 260),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        BackgroundColor3 = T.panel,
+        BorderSizePixel = 0,
+        ZIndex = 71
+    })
+    corner(cpBox, 10)
+    -- El cpBox intercepta clicks para que no se propague al fondo
+    mk("TextButton", cpBox, {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = "",
+        ZIndex = 71,
+        AutoButtonColor = false
+    })
+
+    -- Contenedor del color picker real (ENV.openCP inyecta aquí su UI)
+    -- NOTE: openCP espera un callback; aquí creamos un wrapper que muestra el overlay
+    local cpInnerContainer = mk("Frame", cpBox, {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        ZIndex = 72
+    })
 
     do
         local rColorMat = bRow(28)
@@ -508,7 +567,7 @@ function FormasModule.init(ENV)
             Text = selBlockNameRef.value
         })
 
-        -- Overlay para seleccionar bloque
+        -- Overlay para seleccionar bloque (igual que antes, cierra al tocar fuera)
         matPickOv = mk("Frame", ENV.Win, {
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundColor3 = Color3.new(0, 0, 0),
@@ -866,7 +925,7 @@ function FormasModule.init(ENV)
     end)
 
     -- ══════════════════════════════════════════════
-    -- Handles drag logic + RenderStepped (Cámara sin congelarse usando tu snippet)
+    -- Handles drag logic + RenderStepped
     -- ══════════════════════════════════════════════
     do
         local drag2,savedCam,origDP=false,nil,nil
@@ -895,7 +954,6 @@ function FormasModule.init(ENV)
                 ArcAdornee.Position=Vector3.new(0,-9999,0) 
             end
 
-            -- Re-validar visibilidad y adornee en cada frame para prevenir desaparición
             if PageBuild.Visible and centerPos and not locked then
                 if toolMode == "move" then
                     if Handles.Adornee ~= cDummy then Handles.Adornee = cDummy end
@@ -914,7 +972,7 @@ function FormasModule.init(ENV)
     end
 
     -- ══════════════════════════════════════════════
-    -- Preview: renderizar con material y color REALES
+    -- Preview
     -- ══════════════════════════════════════════════
     local prevPool={}
     local function hidePreview()
@@ -1029,9 +1087,6 @@ function FormasModule.init(ENV)
                 if blk and sRF then pcall(function() sRF:InvokeServer(blk,seg.size,seg.cframe) end) end
                 return blk
             end
-            
-            -- LÍMITE DE VELOCIDAD: 50 subprocesos para spamear el servidor lo más rápido posible sin compartir.
-            -- Si está compartiendo, usa 15 para no sobrecargar la sincronización entre clientes.
             local WORKERS=sharing and 15 or 50; local nextIdx=1; local active=WORKERS
             local function worker()
                 while true do
@@ -1045,7 +1100,6 @@ function FormasModule.init(ENV)
                 active=active-1
             end
             for _=1,WORKERS do task.spawn(worker) end
-            -- Actualiza la interfaz rapidísimo
             while active>0 do setStat(("Construyendo %d/%d"):format(placed,total),T.warn); task.wait(0.03) end
             
             if blockConn then blockConn:Disconnect(); blockConn=nil end
