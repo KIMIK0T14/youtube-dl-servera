@@ -393,36 +393,115 @@ function BuildsModule.init(ENV)
         end
     end)
 
+    -- Sistema de pooling y renderizado asíncrono para evitar lag con cientos de builds
+    local renderToken = 0
+    local rowPool = {}
     local renderSaveList
-    renderSaveList = function()
-        for _,c in ipairs(SaveUI.listCont:GetChildren()) do if not c:IsA("UIListLayout") then c:Destroy() end end
-        if #Saves==0 then
-            SaveUI.listScroll.Size=UDim2.new(1,0,0,22)
-            mk("TextLabel",SaveUI.listCont,{Size=UDim2.new(1,0,0,18),LayoutOrder=1,Text="(sin guardados)",TextColor3=T.sub,BackgroundTransparency=1,Font=Enum.Font.Gotham,TextSize=10,TextXAlignment=Enum.TextXAlignment.Center,TextYAlignment=Enum.TextYAlignment.Top})
-            return
+    renderSaveList = function(isAsync, onComplete)
+        renderToken = renderToken + 1
+        local myToken = renderToken
+        
+        local function updateRow(i)
+            if myToken ~= renderToken then return false end
+            local sv = Saves[i]
+            local row = rowPool[i]
+            if not row then
+                row = mk("Frame",SaveUI.listCont,{Size=UDim2.new(1,0,0,30),BackgroundColor3=T.input,LayoutOrder=i}); corner(row,6)
+                local bar=mk("Frame",row,{Name="Bar",Size=UDim2.new(0,4,1,-10),Position=UDim2.new(0,3,0,5),BackgroundColor3=T.accent,BorderSizePixel=0,Visible=false}); corner(bar,2)
+                local nL=lbl(row,"",UDim2.new(1,-96,1,0),UDim2.new(0,8,0,0),T.text); nL.Name="NameLbl"
+                local useB=mk("TextButton",row,{Name="UseBtn",Size=UDim2.new(0,48,0,22),Position=UDim2.new(1,-92,0.5,-11),Text="Usar",TextColor3=T.text,BackgroundColor3=T.purple,Font=Enum.Font.GothamBold,TextSize=9}); corner(useB,4)
+                local delB=mk("TextButton",row,{Name="DelBtn",Size=UDim2.new(0,40,0,22),Position=UDim2.new(1,-42,0.5,-11),Text="X",TextColor3=T.text,BackgroundColor3=T.danger,Font=Enum.Font.GothamBold,TextSize=11}); corner(delB,4)
+                
+                useB.MouseButton1Click:Connect(function()
+                    local idx = row.LayoutOrder
+                    selSaveIdx=idx; placeScale=1; placeRot=CFrame.identity; SaveUI.scaleLbl.Text="1.0x"
+                    local z=closestZone(myRefPos()); if z then placePosV=z.Position+Vector3.new(0,z.Size.Y/2+1,0) else placePosV=myRefPos() end
+                    renderSaveList(); renderSavePrev()
+                end)
+                delB.MouseButton1Click:Connect(function()
+                    local idx = row.LayoutOrder
+                    local sv2=Saves[idx]; if sv2 then local fp=sv2._path or(FS2.."/"..sv2.name..".json"); FSys.del(fp); delSaveOrd(sv2.name) end
+                    table.remove(Saves,idx)
+                    if selSaveIdx==idx then selSaveIdx=nil elseif selSaveIdx and selSaveIdx>idx then selSaveIdx=selSaveIdx-1 end
+                    _G[GKEY]=Saves; renderSaveList(); renderSavePrev(); cCache={}
+                end)
+                
+                rowPool[i] = row
+            else
+                row.Parent = SaveUI.listCont
+                row.LayoutOrder = i
+            end
+            
+            if sv then
+                row.Visible = true
+                local isSel=(selSaveIdx==i)
+                row.BackgroundColor3 = T.input
+                local bar = row:FindFirstChild("Bar")
+                if bar then bar.Visible = isSel end
+                local nblk=sv.data and sv.data.Block and #sv.data.Block or 0
+                local nL = row:FindFirstChild("NameLbl")
+                if nL then
+                    nL.Text = sv.name.." ("..nblk..")"
+                    nL.Position = UDim2.new(0, isSel and 14 or 8, 0, 0)
+                    nL.TextColor3 = isSel and Color3.new(1,1,1) or T.text
+                    nL.Font = isSel and Enum.Font.GothamBold or Enum.Font.GothamSemibold
+                end
+            else
+                row.Visible = false
+            end
+            return true
         end
+        
+        if #Saves==0 then
+            for _, row in ipairs(rowPool) do row.Visible = false end
+            SaveUI.listScroll.Size=UDim2.new(1,0,0,22)
+            local emptyLbl = SaveUI.listCont:FindFirstChild("EmptyLbl")
+            if not emptyLbl then
+                emptyLbl = mk("TextLabel",SaveUI.listCont,{Name="EmptyLbl",Size=UDim2.new(1,0,0,18),LayoutOrder=1,Text="(sin guardados)",TextColor3=T.sub,BackgroundTransparency=1,Font=Enum.Font.Gotham,TextSize=10,TextXAlignment=Enum.TextXAlignment.Center,TextYAlignment=Enum.TextYAlignment.Top})
+            else
+                emptyLbl.Text = "(sin guardados)"
+            end
+            emptyLbl.Visible = true
+            if onComplete then onComplete() end
+            return
+        else
+            local emptyLbl = SaveUI.listCont:FindFirstChild("EmptyLbl")
+            if emptyLbl then emptyLbl.Visible = false end
+        end
+        
         local newH=math.clamp(#Saves*34,34,102); SaveUI.listScroll.Size=UDim2.new(1,0,0,newH)
-        for i=1,#Saves do
-            local sv=Saves[i]; local isSel=(selSaveIdx==i)
-            local row=mk("Frame",SaveUI.listCont,{Size=UDim2.new(1,0,0,30),BackgroundColor3=T.input,LayoutOrder=i}); corner(row,6)
-            if isSel then local bar=mk("Frame",row,{Size=UDim2.new(0,4,1,-10),Position=UDim2.new(0,3,0,5),BackgroundColor3=T.accent,BorderSizePixel=0}); corner(bar,2) end
-            local nblk=sv.data and sv.data.Block and #sv.data.Block or 0
-            local nameCol=isSel and Color3.new(1,1,1) or T.text
-            local nL=lbl(row,sv.name.." ("..nblk..")",UDim2.new(1,-96,1,0),UDim2.new(0,isSel and 14 or 8,0,0),nameCol)
-            if isSel then nL.Font=Enum.Font.GothamBold end
-            local useB=mk("TextButton",row,{Size=UDim2.new(0,48,0,22),Position=UDim2.new(1,-92,0.5,-11),Text="Usar",TextColor3=T.text,BackgroundColor3=T.purple,Font=Enum.Font.GothamBold,TextSize=9}); corner(useB,4)
-            local delB=mk("TextButton",row,{Size=UDim2.new(0,40,0,22),Position=UDim2.new(1,-42,0.5,-11),Text="X",TextColor3=T.text,BackgroundColor3=T.danger,Font=Enum.Font.GothamBold,TextSize=11}); corner(delB,4)
-            useB.MouseButton1Click:Connect(function()
-                selSaveIdx=i; placeScale=1; placeRot=CFrame.identity; SaveUI.scaleLbl.Text="1.0x"
-                local z=closestZone(myRefPos()); if z then placePosV=z.Position+Vector3.new(0,z.Size.Y/2+1,0) else placePosV=myRefPos() end
-                renderSaveList(); renderSavePrev()
+        
+        if isAsync then
+            task.spawn(function()
+                local i = 1
+                while i <= #Saves do
+                    if myToken ~= renderToken then break end
+                    local batchEnd = math.min(i + 9, #Saves)
+                    for j = i, batchEnd do
+                        if myToken ~= renderToken then break end
+                        updateRow(j)
+                    end
+                    i = batchEnd + 1
+                    task.wait()
+                end
+                if myToken == renderToken then
+                    for j = #Saves + 1, #rowPool do
+                        if rowPool[j] then rowPool[j].Visible = false end
+                    end
+                    if onComplete then onComplete() end
+                end
             end)
-            delB.MouseButton1Click:Connect(function()
-                local sv2=Saves[i]; if sv2 then local fp=sv2._path or(FS2.."/"..sv2.name..".json"); FSys.del(fp); delSaveOrd(sv2.name) end
-                table.remove(Saves,i)
-                if selSaveIdx==i then selSaveIdx=nil elseif selSaveIdx and selSaveIdx>i then selSaveIdx=selSaveIdx-1 end
-                _G[GKEY]=Saves; renderSaveList(); renderSavePrev(); cCache={}
-            end)
+        else
+            for i=1,#Saves do
+                if myToken ~= renderToken then break end
+                updateRow(i)
+            end
+            if myToken == renderToken then
+                for j = #Saves + 1, #rowPool do
+                    if rowPool[j] then rowPool[j].Visible = false end
+                end
+                if onComplete then onComplete() end
+            end
         end
     end
 
@@ -507,14 +586,63 @@ function BuildsModule.init(ENV)
         updSaveHandles  = updSaveHandles,
         startSelTicker  = startSelTicker,
         reloadAndRender = function()
-            -- Corre en un hilo para evitar congelamientos
             task.spawn(function()
-                local rel=reloadSaves()
+                -- Mostrar estado de carga inmediatamente
+                if SaveUI.listCont then
+                    renderToken = renderToken + 1
+                    for _,c in ipairs(SaveUI.listCont:GetChildren()) do 
+                        if not c:IsA("UIListLayout") then c.Visible = false end 
+                    end
+                    local emptyLbl = SaveUI.listCont:FindFirstChild("EmptyLbl")
+                    if not emptyLbl then
+                        emptyLbl = mk("TextLabel",SaveUI.listCont,{Name="EmptyLbl",Size=UDim2.new(1,0,0,18),LayoutOrder=1,Text="Cargando guardados...",TextColor3=T.sub,BackgroundTransparency=1,Font=Enum.Font.Gotham,TextSize=10,TextXAlignment=Enum.TextXAlignment.Center,TextYAlignment=Enum.TextYAlignment.Top})
+                    else
+                        emptyLbl.Text = "Cargando guardados..."
+                    end
+                    emptyLbl.Visible = true
+                end
+                
                 for i = 1, #Saves do Saves[i] = nil end
-                for i, v in ipairs(rel) do Saves[i] = v end
-                renderSaveList()
-                if selSaveIdx then renderSavePrev() else updSaveHandles() end
-                startSelTicker()
+                cCache = {}
+                
+                if lOrd then lOrd() end
+                if syncOrd then syncOrd() end
+                
+                -- Cargar JSONs en lotes para no congelar el juego
+                local total = ORD and #ORD or 0
+                local toRemove = {}
+                for i = 1, total do
+                    local name = ORD[i]
+                    if name then
+                        local path = FS2.."/"..name..".json"
+                        local ok, res = pcall(readBF, name)
+                        if not ok or not res then
+                            ok, res = pcall(readBF, path)
+                        end
+                        
+                        if ok and res and type(res) == "table" then
+                            local svData = res.data or res
+                            Saves[#Saves+1] = {name=name, data=svData, _path=path}
+                        else
+                            toRemove[#toRemove+1] = name
+                        end
+                    end
+                    
+                    if i % 10 == 0 then
+                        task.wait()
+                    end
+                end
+                
+                for _, name in ipairs(toRemove) do
+                    if delSaveOrd then delSaveOrd(name) end
+                end
+                
+                if selSaveIdx and not Saves[selSaveIdx] then selSaveIdx = nil end
+                
+                renderSaveList(true, function()
+                    if selSaveIdx then renderSavePrev() else updSaveHandles() end
+                    startSelTicker()
+                end)
             end)
         end,
         hidePreview     = function()
