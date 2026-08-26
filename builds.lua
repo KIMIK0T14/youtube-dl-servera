@@ -526,8 +526,26 @@ function BuildsModule.init(ENV)
     end)
 
     local blockQueue2={}; local blockConn2=nil
-    local function hookFolder2(folder) if blockConn2 then blockConn2:Disconnect(); blockConn2=nil end; blockQueue2={}; if folder then blockConn2=folder.ChildAdded:Connect(function(c) blockQueue2[#blockQueue2+1]=c end) end end
-    local function popBlock2(timeout) local t0=tick(); while #blockQueue2==0 do if saveBuildState.cancel then return nil end; if tick()-t0>timeout then return nil end; task.wait() end; return table.remove(blockQueue2,1) end
+    local function hookFolder2(folder)
+        if blockConn2 then blockConn2:Disconnect(); blockConn2=nil end
+        blockQueue2={}
+        if folder then
+            blockConn2 = folder.ChildAdded:Connect(function(c)
+                if c:IsA("BasePart") then
+                    blockQueue2[#blockQueue2+1] = c
+                end
+            end)
+        end
+    end
+    local function popBlock2(timeout)
+        local t0=tick()
+        while #blockQueue2==0 do
+            if saveBuildState.cancel then return nil end
+            if tick()-t0>timeout then return nil end
+            task.wait()
+        end
+        return table.remove(blockQueue2,1)
+    end
 
     SaveUI.btnBuildSaved.MouseButton1Click:Connect(function()
         if saveBuildState.running then saveBuildState.cancel=true; SaveUI.prevStatus.Text="cancelando..."; SaveUI.prevStatus.TextColor3=T.danger; SaveUI.btnBuildSaved.Text="CANCELAR..."; return end
@@ -543,33 +561,112 @@ function BuildsModule.init(ENV)
                 local bRF2=bTool2:FindFirstChild("RF"); local sRF2=sTool2 and sTool2:FindFirstChild("RF"); local pRF2=pTool2 and pTool2:FindFirstChild("RF")
                 if not bRF2 then error("BuildingTool sin RF") end
                 local pos=curPlacePos(); local delta=getSaveDelta(sv); local center=buildCenter(sv); local cAdj=delta*center
-                local folder2=userFolder(LP.Name); hookFolder2(folder2)
-                local blocks=sv.data.Block; local total=#blocks; local placed=0; 
-                -- LÍMITE DE VELOCIDAD ULTRA MÁXIMA
-                local WORKERS2=isSharing() and 15 or 50; local nextIdx2=1; local active2=WORKERS2; local ppairs={}
-                local function pOB(pd)
-                    local nm=pd.BlockName; local inv=dataFolder and dataFolder:FindFirstChild(nm); if not inv or inv.Value<=0 then return end
-                    local rP=Vector3.new(pd.RelX,pd.RelY,pd.RelZ); local rR=CFrame.Angles(math.rad(pd.RotX or 0),math.rad(pd.RotY or 0),math.rad(pd.RotZ or 0))
-                    local rPA=delta*rP; local rRA=(delta-delta.Position)*rR; local offset=(rPA-cAdj)*placeScale; local rotOff=placeRot*offset
-                    local world=CFrame.new(pos+rotOff)*placeRot*rRA
-                    if not folder2 or folder2.Parent==nil then folder2=userFolder(LP.Name); hookFolder2(folder2) end
-                    local ret=bRF2:InvokeServer(nm,inv.Value,nil,world,true,world,false); local blk
-                    if typeof(ret)=="Instance" and ret:IsA("BasePart") then blk=ret else blk=popBlock2(2) end
-                    if blk then placed=placed+1; local sz=Vector3.new(pd.SizeX or 2,pd.SizeY or 2,pd.SizeZ or 2)*placeScale; if sRF2 then pcall(function() sRF2:InvokeServer(blk,sz,world) end) end; if pd.ColorR then ppairs[#ppairs+1]={blk,Color3.new(pd.ColorR,pd.ColorG,pd.ColorB)} end end
+                
+                -- Obtiene el nombre del líder si está en modo compartir, de lo contrario usa tu nombre.
+                local function getLeaderName()
+                    if not isSharing() then return LP.Name end
+                    if isLdr then
+                        for _, p in ipairs(Players:GetPlayers()) do
+                            if p.Team == LP.Team and isLdr(p.Name) then
+                                return p.Name
+                            end
+                        end
+                    end
+                    return LP.Name
                 end
-                local function worker2() while true do if saveBuildState.cancel then break end; local i=nextIdx2; nextIdx2=nextIdx2+1; if i>total then break end; pOB(blocks[i]) end; active2=active2-1 end
+                
+                -- Hookea la carpeta correspondiente para capturar los bloques colocados
+                local folder2 = userFolder(getLeaderName())
+                hookFolder2(folder2)
+                
+                local blocks=sv.data.Block; local total=#blocks; local placed=0; 
+                local WORKERS2=isSharing() and 15 or 50; local nextIdx2=1; local active2=WORKERS2; local ppairs={}
+                
+                local function pOB(pd)
+                    local nm=pd.BlockName
+                    local inv=dataFolder and dataFolder:FindFirstChild(nm)
+                    local invCount = inv and inv.Value or 0
+                    -- Si no está compartiendo, omite si no tiene bloques. Si está compartiendo, el servidor lo manejará.
+                    if not isSharing() and invCount <= 0 then return end
+                    
+                    local rP=Vector3.new(pd.RelX,pd.RelY,pd.RelZ)
+                    local rR=CFrame.Angles(math.rad(pd.RotX or 0),math.rad(pd.RotY or 0),math.rad(pd.RotZ or 0))
+                    local rPA=delta*rP
+                    local rRA=(delta-delta.Position)*rR
+                    local offset=(rPA-cAdj)*placeScale
+                    local rotOff=placeRot*offset
+                    local world=CFrame.new(pos+rotOff)*placeRot*rRA
+                    
+                    if not folder2 or folder2.Parent==nil then
+                        folder2 = userFolder(getLeaderName())
+                        hookFolder2(folder2)
+                    end
+                    
+                    -- Pasa invCount en lugar de inv.Value para evitar errores si inv es nil
+                    local ret=bRF2:InvokeServer(nm, invCount, nil, world, true, world, false)
+                    local blk
+                    if typeof(ret)=="Instance" and ret:IsA("BasePart") then
+                        blk=ret
+                    else
+                        blk=popBlock2(2)
+                    end
+                    
+                    if blk then
+                        placed=placed+1
+                        local sz=Vector3.new(pd.SizeX or 2,pd.SizeY or 2,pd.SizeZ or 2)*placeScale
+                        if sRF2 then
+                            pcall(function() sRF2:InvokeServer(blk,sz,world) end)
+                        end
+                        if pd.ColorR then
+                            ppairs[#ppairs+1]={blk,Color3.new(pd.ColorR,pd.ColorG,pd.ColorB)}
+                        end
+                    end
+                end
+                local function worker2()
+                    while true do
+                        if saveBuildState.cancel then break end
+                        local i=nextIdx2
+                        nextIdx2=nextIdx2+1
+                        if i>total then break end
+                        pOB(blocks[i])
+                    end
+                    active2=active2-1
+                end
                 for _=1,WORKERS2 do task.spawn(worker2) end
-                while active2>0 do SaveUI.prevStatus.Text=string.format("Construyendo %d/%d",placed,total); SaveUI.prevStatus.TextColor3=T.warn; task.wait(0.03) end
+                while active2>0 do
+                    SaveUI.prevStatus.Text=string.format("Construyendo %d/%d",placed,total)
+                    SaveUI.prevStatus.TextColor3=T.warn
+                    task.wait(0.03)
+                end
                 if blockConn2 then blockConn2:Disconnect(); blockConn2=nil end
-                if pRF2 and #ppairs>0 and not saveBuildState.cancel then SaveUI.prevStatus.Text=string.format("Pintando %d bloques...",#ppairs); SaveUI.prevStatus.TextColor3=T.warn; paintBatch(pRF2,ppairs) end
-                if saveBuildState.cancel then SaveUI.prevStatus.Text="Cancelado ("..placed.." colocados)"; SaveUI.prevStatus.TextColor3=T.danger
-                else SaveUI.prevStatus.Text="listo! "..placed.."/"..total.." colocados"; SaveUI.prevStatus.TextColor3=T.ok end
+                if pRF2 and #ppairs>0 and not saveBuildState.cancel then
+                    SaveUI.prevStatus.Text=string.format("Pintando %d bloques...",#ppairs)
+                    SaveUI.prevStatus.TextColor3=T.warn
+                    paintBatch(pRF2,ppairs)
+                end
+                if saveBuildState.cancel then
+                    SaveUI.prevStatus.Text="Cancelado ("..placed.." colocados)"
+                    SaveUI.prevStatus.TextColor3=T.danger
+                else
+                    SaveUI.prevStatus.Text="listo! "..placed.."/"..total.." colocados"
+                    SaveUI.prevStatus.TextColor3=T.ok
+                end
             end)
             if blockConn2 then blockConn2:Disconnect(); blockConn2=nil end
-            if not ok2 then SaveUI.prevStatus.Text="error: "..tostring(err); SaveUI.prevStatus.TextColor3=T.danger end
-            local hum2=LP.Character and LP.Character:FindFirstChild("Humanoid"); if hum2 then pcall(function() hum2:UnequipTools() end) end
-            saveBuildState.running=false; saveBuildState.cancel=false; gbRunningRef.value=false
-            SaveUI.btnBuildSaved.Text="CONSTRUIR GUARDADO"; SaveUI.btnBuildSaved.BackgroundColor3=T.purple; SaveUI.btnBuildSaved.Active=true
+            if not ok2 then
+                SaveUI.prevStatus.Text="error: "..tostring(err)
+                SaveUI.prevStatus.TextColor3=T.danger
+            end
+            local hum2=LP.Character and LP.Character:FindFirstChild("Humanoid")
+            if hum2 then
+                pcall(function() hum2:UnequipTools() end)
+            end
+            saveBuildState.running=false
+            saveBuildState.cancel=false
+            gbRunningRef.value=false
+            SaveUI.btnBuildSaved.Text="CONSTRUIR GUARDADO"
+            SaveUI.btnBuildSaved.BackgroundColor3=T.purple
+            SaveUI.btnBuildSaved.Active=true
         end)
     end)
 
