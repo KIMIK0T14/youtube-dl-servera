@@ -307,10 +307,8 @@ function ImagenesModule.init(ENV)
     local BLACK = Color3.fromRGB(0, 0, 0)
     local DEF_IMG = "rbxassetid://12328114032"
 
-    -- Forward declarations
     local updateHandles, mPv, hPv, setStat, selectImage, refreshGrid
 
-    -- Estado
     local selImage = nil
     local selBlockName = "PlasticBlock"
     local selColor = Color3.fromRGB(255, 255, 255)
@@ -328,7 +326,6 @@ function ImagenesModule.init(ENV)
     local sBCol = Color3.fromRGB(163, 162, 165)
     local lk = false
 
-    -- Contenedor principal
     local PB = mk("ScrollingFrame", Body, {
         Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0,
         ScrollBarThickness = 4, ScrollBarImageColor3 = T.accent,
@@ -344,9 +341,6 @@ function ImagenesModule.init(ENV)
         return f
     end
 
-    -- ============================================================
-    -- ELEMENTOS VISUALES (Handles, Dummy, SelectionBox)
-    -- ============================================================
     local PURPLE = Color3.fromRGB(170, 0, 255)
     local cDummy = mk("Part", envF, {
         Size = Vector3.new(4, 4, 4), Transparency = 1, Color = T.accent,
@@ -377,9 +371,6 @@ function ImagenesModule.init(ENV)
         end
     end
 
-    -- ============================================================
-    -- LEER MATERIAL/COLOR DE BLOQUE REAL
-    -- ============================================================
     local function readRealBlockVisual(blockName)
         local folder = userFolder and userFolder(LP.Name)
         if folder then
@@ -424,9 +415,6 @@ function ImagenesModule.init(ENV)
         return ""
     end
 
-    -- ============================================================
-    -- SECCIÓN: GALERÍA DE IMÁGENES
-    -- ============================================================
     local images = {}
     local thumbButtons = {}
     local imgGrid, imgInfoLabel
@@ -514,7 +502,6 @@ function ImagenesModule.init(ENV)
         mPv()
     end
 
-    -- Header de galería
     do
         local r = bRow(24)
         lbl(r, "GALERÍA DE IMÁGENES", UDim2.new(1, 0, 1, 0), UDim2.new(0, 0, 0, 0), T.sub)
@@ -523,7 +510,6 @@ function ImagenesModule.init(ENV)
         rBtn.MouseButton1Click:Connect(function() loadImages(); refreshGrid() end)
     end
 
-    -- Grid de imágenes
     do
         local r = bRow(180)
         imgGrid = mk("ScrollingFrame", r, {
@@ -538,7 +524,6 @@ function ImagenesModule.init(ENV)
         pad(imgGrid, 2, 2, 2, 2)
     end
 
-    -- Info imagen
     do
         local r = bRow(20)
         imgInfoLabel = lbl(r, "Ninguna imagen seleccionada", UDim2.new(1, 0, 1, 0), UDim2.new(0, 0, 0, 0), T.sub)
@@ -546,9 +531,6 @@ function ImagenesModule.init(ENV)
         imgInfoLabel.TextXAlignment = Enum.TextXAlignment.Left
     end
 
-    -- ============================================================
-    -- SECCIÓN: SELECTOR DE BLOQUE
-    -- ============================================================
     local matPickOv, matPickBtn, mLabelRef, mIconRef
 
     local function updMatBtn(nm, iconId)
@@ -605,7 +587,6 @@ function ImagenesModule.init(ENV)
             TextXAlignment = Enum.TextXAlignment.Left, Text = selBlockName,
         })
 
-        -- Overlay picker
         matPickOv = mk("Frame", ENV.Win, {
             Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0),
             BackgroundTransparency = 0.35, BorderSizePixel = 0, Visible = false, ZIndex = 60,
@@ -697,9 +678,6 @@ function ImagenesModule.init(ENV)
         end)
     end
 
-    -- ============================================================
-    -- SECCIÓN: RESOLUCIÓN Y TAMAÑO
-    -- ============================================================
     local function cleanNum(t)
         local out = {}; local dotUsed = false
         for i = 1, #t do
@@ -758,11 +736,9 @@ function ImagenesModule.init(ENV)
         return bx
     end
 
-    local resBox, sizeBox
-    do local r = bRow(24); resBox = mkNumRow(r, "Resolución", "32", 1, 1) end
+    local sizeBox
     do local r = bRow(24); sizeBox = mkNumRow(r, "Tam. Bloq", "2", 0.5, 0.1) end
 
-    -- Merge toggle
     local doMerge = false
     local mergeBtn
     do
@@ -778,9 +754,6 @@ function ImagenesModule.init(ENV)
         mergeBtn.MouseButton1Click:Connect(function() doMerge = not doMerge; refM(); mPv() end)
     end
 
-    -- ============================================================
-    -- SECCIÓN: POSICIÓN
-    -- ============================================================
     local BtnBldC, BtnBldS; local bCZ = true
     local function rfBP()
         BtnBldC.BackgroundColor3 = bCZ and WHITE or T.btnAlt
@@ -836,9 +809,6 @@ function ImagenesModule.init(ENV)
     end
     rfBP()
 
-    -- ============================================================
-    -- SECCIÓN: MOVER / ROTAR
-    -- ============================================================
     local bMove, bRotT, moveStepBox, rotStepBox
     local function rfT()
         bMove.BackgroundColor3 = (tM == "move") and T.btn or T.btnAlt
@@ -872,7 +842,6 @@ function ImagenesModule.init(ENV)
         bRotT.MouseButton1Click:Connect(function() tM = "rotate"; rfT() end)
     end
 
-    -- Handles drag
     do
         local drag2, savedCam, origDP, origBaseCPos = false, nil, nil, nil
         Handles.MouseButton1Down:Connect(function()
@@ -935,9 +904,6 @@ function ImagenesModule.init(ENV)
         end)
     end
 
-    -- ============================================================
-    -- PREVIEW Y GENERACIÓN DE PLAN
-    -- ============================================================
     local pp = {}
     hPv = function()
         for _, p in ipairs(pp) do p.Transparency = 1; p.Size = Vector3.new(0.05, 0.05, 0.05) end
@@ -948,22 +914,19 @@ function ImagenesModule.init(ENV)
 
     local function generatePlan()
         if not selImage or not cP then return {} end
-        local res = math.max(1, math.floor(tonumber(resBox.Text) or 32))
         local BS = math.max(0.1, tonumber(sizeBox.Text) or 2)
         local img = selImage
         local imgW, imgH, px = img.width, img.height, img.pixels
 
-        local scale = res / math.max(imgW, imgH)
-        local activeW = math.max(1, math.floor(imgW * scale))
-        local activeH = math.max(1, math.floor(imgH * scale))
+        -- Auto adaptable: Usa el tamaño nativo de la imagen (1 bloque = 1 pixel)
+        local activeW = imgW
+        local activeH = imgH
 
         local grid = {}
         for y = 0, activeH - 1 do
             grid[y + 1] = {}
             for x = 0, activeW - 1 do
-                local sx = math.min(imgW - 1, math.floor(x / scale))
-                local sy = math.min(imgH - 1, math.floor(y / scale))
-                local pixel = px[sy * imgW + sx + 1]
+                local pixel = px[y * imgW + x + 1]
                 if pixel and pixel[4] >= 0.05 then
                     grid[y + 1][x + 1] = {r = pixel[1], g = pixel[2], b = pixel[3], a = pixel[4]}
                 end
@@ -976,7 +939,8 @@ function ImagenesModule.init(ENV)
         local startZ = -(activeH * BS) / 2 + BS / 2
 
         local function applyRot(cf)
-            if hR then return CFrame.new(cP) * sR * (CFrame.new(cP):Inverse() * cf) end
+            local centerCF = CFrame.new(cx, cy, cz)
+            if hR then return centerCF * sR * (centerCF:Inverse() * cf) end
             return cf
         end
 
@@ -1079,9 +1043,6 @@ function ImagenesModule.init(ENV)
 
     RunService.Heartbeat:Connect(function() if pD then pD = false; dPv() end end)
 
-    -- ============================================================
-    -- PREVIEW TOGGLE Y BUILD BUTTON
-    -- ============================================================
     local BPr, BB, SL
     setStat = function(t, col) if SL then SL.Text = t; SL.TextColor3 = col or T.text end end
 
@@ -1111,9 +1072,6 @@ function ImagenesModule.init(ENV)
         SL = mk("TextLabel", BB, {Size = UDim2.new(0, 100, 0, 12), Position = UDim2.new(1, -104, 1, -16), Text = "listo", TextColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Right})
     end
 
-    -- ============================================================
-    -- FUNCIÓN DE CONSTRUCCIÓN
-    -- ============================================================
     local blockQueue = {}; local blockConn = nil
     local function hookFolder(folder)
         if blockConn then blockConn:Disconnect(); blockConn = nil end
@@ -1176,8 +1134,13 @@ function ImagenesModule.init(ENV)
                     if invItem.Value <= 0 then break end
                     local i = nextIdx; nextIdx = nextIdx + 1; if i > total then break end
                     if not folder or folder.Parent == nil then folder = userFolder(LP.Name); hookFolder(folder) end
+                    
                     local blk = placeOne(plan[i])
-                    if blk then placed = placed + 1; pBl[#pBl + 1] = blk end
+                    if blk then 
+                        placed = placed + 1
+                        -- Guardamos el bloque junto a SU color exacto para evitar que se pinten mal al desordenarse por multithreading
+                        pBl[#pBl + 1] = {block = blk, color = useColor and selColor or plan[i].color}
+                    end
                 end
                 active = active - 1
             end
@@ -1188,9 +1151,8 @@ function ImagenesModule.init(ENV)
             if not bS.cancel and #pBl > 0 then
                 setStat(("Pintando %d bloques..."):format(#pBl), T.warn)
                 local paintData = {}
-                for i, blk in ipairs(pBl) do
-                    if useColor then paintData[#paintData + 1] = {blk, selColor}
-                    else paintData[#paintData + 1] = {blk, plan[i].color} end
+                for _, item in ipairs(pBl) do
+                    paintData[#paintData + 1] = {item.block, item.color}
                 end
                 if pRF then paintBatch(pRF, paintData) end
             end
@@ -1213,9 +1175,6 @@ function ImagenesModule.init(ENV)
         task.spawn(iniciarConstruccion)
     end)
 
-    -- ============================================================
-    -- RECENTER AUTOMÁTICO
-    -- ============================================================
     local function waitAndRecenter()
         task.spawn(function()
             for _ = 1, 20 do
@@ -1241,9 +1200,6 @@ function ImagenesModule.init(ENV)
         if PB.Visible and needsRecenter then needsRecenter = false; waitAndRecenter() end
     end)
 
-    -- ============================================================
-    -- INICIALIZACIÓN
-    -- ============================================================
     rfT(); rfBP(); loadImages(); refreshGrid()
     task.defer(function() task.wait(0.3); rfT() end)
     task.spawn(function() task.wait(1); if centerOnCZ() then bCZ = true; rfBP() end end)
