@@ -91,6 +91,7 @@ function BuildsModule.init(ENV)
     local curDN       = "Yo"
     local curUN       = LP.Name
     local saveBuildState = {running=false, cancel=false}
+    local shareModeOn = false -- Estado del modo compartir
 
     local PURPLE_GAMER = Color3.fromRGB(170, 0, 255)
 
@@ -225,8 +226,8 @@ function BuildsModule.init(ENV)
             rb.MouseButton1Click:Connect(function()
                 selPlayer=mem.uname; curUID=mem.uid; curDN=mem.dname; curUN=mem.uname
                 whoVis=false; if whoFrame then whoFrame.Visible=false end
-                if whoBtn then for _,ch in ipairs(whoBtn:GetChildren()) do if ch:IsA("TextLabel")and(ch.Text=="▲"or ch.Text=="▼") then ch.Text="▼" end end end
-                if whoBtn then whoBtn.BackgroundColor3=getTeamColor(curUN) end
+                -- FIX: Llamar a setWhoBtn para que actualice la foto del avatar correctamente
+                setWhoBtn(curUID, curDN, curUN)
                 refreshWho()
             end)
             return {row=row,blockLbl=bkL,lastCount=nil,lastTC=nil}
@@ -328,10 +329,29 @@ function BuildsModule.init(ENV)
     SaveUI.scaleLbl=lbl(sTRow,"1.0x",UDim2.new(0,26,0,24),UDim2.new(1,-48,0,0),T.text); SaveUI.scaleLbl.TextXAlignment=Enum.TextXAlignment.Center
     SaveUI.btnScaleUp=btn(sTRow,"+",UDim2.new(0,22,0,24),UDim2.new(1,-22,0,0),T.btnAlt)
 
-    local pPRow=mk("Frame",secPrev,{Size=UDim2.new(1,0,0,28),BackgroundTransparency=1,LayoutOrder=5})
+    -- Botón Modo Compartir
+    local shRow=mk("Frame",secPrev,{Size=UDim2.new(1,0,0,28),BackgroundTransparency=1,LayoutOrder=5})
+    SaveUI.BtnShareMode=btn(shRow,"Modo Compartir: OFF",UDim2.new(1,0,1,0),nil,T.btnAlt)
+    SaveUI.BtnShareMode.TextSize = 10
+    SaveUI.BtnShareMode.TextColor3 = T.text
+
+    SaveUI.BtnShareMode.MouseButton1Click:Connect(function()
+        shareModeOn = not shareModeOn
+        if shareModeOn then
+            SaveUI.BtnShareMode.Text = "Modo Compartir: ON"
+            SaveUI.BtnShareMode.BackgroundColor3 = T.ok
+            SaveUI.BtnShareMode.TextColor3 = T.bg
+        else
+            SaveUI.BtnShareMode.Text = "Modo Compartir: OFF"
+            SaveUI.BtnShareMode.BackgroundColor3 = T.btnAlt
+            SaveUI.BtnShareMode.TextColor3 = T.text
+        end
+    end)
+
+    local pPRow=mk("Frame",secPrev,{Size=UDim2.new(1,0,0,28),BackgroundTransparency=1,LayoutOrder=6})
     SaveUI.BtnPlaceZone=btn(pPRow,"Centro zona",UDim2.new(0.5,-3,1,0),UDim2.new(0,0,0,0),T.accent)
     SaveUI.BtnSaveSel=btn(pPRow,"Sel. Posicion",UDim2.new(0.5,-3,1,0),UDim2.new(0.5,3,0,0),T.btnAlt)
-    SaveUI.btnBuildSaved=btn(secPrev,"CONSTRUIR GUARDADO",UDim2.new(1,0,0,32),nil,T.purple); SaveUI.btnBuildSaved.LayoutOrder=6
+    SaveUI.btnBuildSaved=btn(secPrev,"CONSTRUIR GUARDADO",UDim2.new(1,0,0,32),nil,T.purple); SaveUI.btnBuildSaved.LayoutOrder=7
     SaveUI.prevStatus=mk("TextLabel",SaveUI.btnBuildSaved,{Size=UDim2.new(0,100,0,12),Position=UDim2.new(1,-104,1,-16),Text="",TextColor3=T.text,BackgroundTransparency=1,Font=Enum.Font.Gotham,TextSize=9,TextXAlignment=Enum.TextXAlignment.Right})
 
     local selBox=mk("SelectionBox",SG,{Color3=T.accent,LineThickness=0.04})
@@ -382,7 +402,6 @@ function BuildsModule.init(ENV)
         end)
     end)
 
-    -- Evitar renderizar si la pestaña no es visible
     LP:GetPropertyChangedSignal("Team"):Connect(function()
         task.wait(0.5)
         if not PageSave.Visible then return end
@@ -393,7 +412,6 @@ function BuildsModule.init(ENV)
         end
     end)
 
-    -- Sistema de pooling y renderizado asíncrono para evitar lag con cientos de builds
     local renderToken = 0
     local rowPool = {}
     local renderSaveList
@@ -562,10 +580,10 @@ function BuildsModule.init(ENV)
                 if not bRF2 then error("BuildingTool sin RF") end
                 local pos=curPlacePos(); local delta=getSaveDelta(sv); local center=buildCenter(sv); local cAdj=delta*center
                 
-                -- Obtiene el nombre del líder si está en modo compartir, de lo contrario usa tu nombre.
+                -- Obtiene el nombre del líder del equipo si el Modo Compartir está activado.
                 local function getLeaderName()
-                    if not isSharing() then return LP.Name end
-                    if isLdr then
+                    if not shareModeOn then return LP.Name end
+                    if LP.Team and isLdr then
                         for _, p in ipairs(Players:GetPlayers()) do
                             if p.Team == LP.Team and isLdr(p.Name) then
                                 return p.Name
@@ -575,19 +593,22 @@ function BuildsModule.init(ENV)
                     return LP.Name
                 end
                 
-                -- Hookea la carpeta correspondiente para capturar los bloques colocados
-                local folder2 = userFolder(getLeaderName())
+                -- Hookea la carpeta del líder para capturar sus bloques al ser creados
+                local targetName = getLeaderName()
+                local folder2 = userFolder(targetName)
                 hookFolder2(folder2)
                 
                 local blocks=sv.data.Block; local total=#blocks; local placed=0; 
-                local WORKERS2=isSharing() and 15 or 50; local nextIdx2=1; local active2=WORKERS2; local ppairs={}
+                local WORKERS2 = shareModeOn and 15 or 50
+                local nextIdx2=1; local active2=WORKERS2; local ppairs={}
                 
                 local function pOB(pd)
                     local nm=pd.BlockName
                     local inv=dataFolder and dataFolder:FindFirstChild(nm)
                     local invCount = inv and inv.Value or 0
-                    -- Si no está compartiendo, omite si no tiene bloques. Si está compartiendo, el servidor lo manejará.
-                    if not isSharing() and invCount <= 0 then return end
+                    
+                    -- Si no estamos compartiendo y nos faltan bloques propios, lo saltamos.
+                    if not shareModeOn and invCount <= 0 then return end
                     
                     local rP=Vector3.new(pd.RelX,pd.RelY,pd.RelZ)
                     local rR=CFrame.Angles(math.rad(pd.RotX or 0),math.rad(pd.RotY or 0),math.rad(pd.RotZ or 0))
@@ -602,13 +623,12 @@ function BuildsModule.init(ENV)
                         hookFolder2(folder2)
                     end
                     
-                    -- Pasa invCount en lugar de inv.Value para evitar errores si inv es nil
                     local ret=bRF2:InvokeServer(nm, invCount, nil, world, true, world, false)
                     local blk
                     if typeof(ret)=="Instance" and ret:IsA("BasePart") then
                         blk=ret
                     else
-                        blk=popBlock2(2)
+                        blk=popBlock2(2) -- Si el server no lo retorna, espera a que se añada a la carpeta del líder
                     end
                     
                     if blk then
@@ -684,7 +704,6 @@ function BuildsModule.init(ENV)
         startSelTicker  = startSelTicker,
         reloadAndRender = function()
             task.spawn(function()
-                -- Mostrar estado de carga inmediatamente
                 if SaveUI.listCont then
                     renderToken = renderToken + 1
                     for _,c in ipairs(SaveUI.listCont:GetChildren()) do 
@@ -705,7 +724,6 @@ function BuildsModule.init(ENV)
                 if lOrd then lOrd() end
                 if syncOrd then syncOrd() end
                 
-                -- Cargar JSONs en lotes para no congelar el juego
                 local total = ORD and #ORD or 0
                 local toRemove = {}
                 for i = 1, total do
