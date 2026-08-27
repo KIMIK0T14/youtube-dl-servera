@@ -1,4 +1,4 @@
--- builds.lua
+-- builds.lua  (FIXED: share mode toggle, leader detection, scaling fix, avatar fix)
 local BuildsModule = {}
 
 function BuildsModule.init(ENV)
@@ -30,7 +30,7 @@ function BuildsModule.init(ENV)
     local getTool     = ENV.getTool
     local equipTool   = ENV.equipTool
     local userFolder  = ENV.userFolder
-    local dataFolder  = ENV.dataFolder
+    local dataFolder  = ENV.dataFolder          -- dataFolder del LP (mi inventario)
     local captureBuild = ENV.captureBuild
     local countPB     = ENV.countPB
     local isLdr       = ENV.isLdr
@@ -59,6 +59,78 @@ function BuildsModule.init(ENV)
     local GKEY        = ENV.GKEY
     local gbRunningRef = ENV.gbRunning
 
+    -- ─── SHARE MODE STATE ────────────────────────────────────────────────────────
+    -- shareModeActive: el usuario activa/desactiva manualmente con el botón.
+    -- Cuando está activo el script busca al líder del equipo y usa SUS bloques.
+    local shareModeActive = false
+
+    -- Devuelve el Player que es líder en mi mismo equipo (o nil)
+    local function getMyTeamLeader()
+        local myTeam = LP.Team
+        if not myTeam then return nil end
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LP and p.Team == myTeam and isLdr(p.Name) then
+                return p
+            end
+        end
+        return nil
+    end
+
+    -- dataFolder del líder (carpeta con los IntValues de inventario)
+    -- En BABFT el dataFolder suele vivir bajo  Players[nombre].PlayerData  o similar.
+    -- Ajusta la ruta según como ENV.dataFolder esté construido en tu loader.
+    local function getLeaderDataFolder()
+        local ldr = getMyTeamLeader()
+        if not ldr then return nil end
+        -- Intentar obtener la carpeta de datos del líder igual que se hace para LP
+        -- Asumimos que ENV.dataFolder = Players[LP.Name].PlayerData (o similar)
+        -- y que la misma estructura existe para el líder.
+        local ok, ldrDF = pcall(function()
+            -- Si dataFolder es Players[LP.Name]:FindFirstChild("Data") etc.
+            -- Reconstruimos el mismo camino para el líder.
+            if dataFolder and dataFolder.Parent and dataFolder.Parent.Parent then
+                local parentName = dataFolder.Parent.Name   -- p.ej. "PlayerData"
+                local grandName  = dataFolder.Name          -- p.ej. "Data"
+                local ldrPlayer  = ldr
+                -- Intentar: Players[ldr.Name][parentName][grandName]
+                local pObj = game:GetService("Players"):FindFirstChild(ldrPlayer.Name)
+                if pObj then
+                    local pa = pObj:FindFirstChild(parentName)
+                    if pa then
+                        local da = pa:FindFirstChild(grandName)
+                        if da then return da end
+                    end
+                    -- Fallback: buscar directamente
+                    return pObj:FindFirstChild(dataFolder.Name)
+                end
+            end
+            return nil
+        end)
+        if ok and ldrDF then return ldrDF end
+        return nil
+    end
+
+    -- Función que devuelve el dataFolder correcto según share mode
+    local function activeDataFolder()
+        if shareModeActive then
+            local ldrDF = getLeaderDataFolder()
+            if ldrDF then return ldrDF end
+        end
+        return dataFolder
+    end
+
+    -- userFolder del líder (donde aparecen los bloques colocados)
+    local function activeUserFolder(playerName)
+        if shareModeActive then
+            local ldr = getMyTeamLeader()
+            if ldr then
+                return userFolder(ldr.Name)
+            end
+        end
+        return userFolder(playerName)
+    end
+
+    -- ─── PAGE SETUP ──────────────────────────────────────────────────────────────
     local PageSave = mk("ScrollingFrame", Body, {
         Size = UDim2.new(1,0,1,0),
         BackgroundTransparency = 1,
@@ -91,10 +163,6 @@ function BuildsModule.init(ENV)
     local curDN       = "Yo"
     local curUN       = LP.Name
     local saveBuildState = {running=false, cancel=false}
-    
-    -- Variables del modo compartir
-    local shareModeOn = false
-    local shareLeaderName = nil
 
     local PURPLE_GAMER = Color3.fromRGB(170, 0, 255)
 
@@ -125,6 +193,7 @@ function BuildsModule.init(ENV)
         return myRefPos()
     end
 
+    -- ─── HANDLES ─────────────────────────────────────────────────────────────────
     local saveDummy = mk("Part", envF, {Size=Vector3.new(4,4,4),Transparency=1,Anchored=true,CanCollide=false,CanQuery=false,Material=Enum.Material.Plastic,Position=Vector3.new(0,-9999,0)})
     local SaveHandles = mk("Handles", SG, {
         Adornee = saveDummy,
@@ -156,6 +225,7 @@ function BuildsModule.init(ENV)
         end
     end
 
+    -- ─── PREVIEW ─────────────────────────────────────────────────────────────────
     local savePool={}
     local renderSavePrev
     renderSavePrev = function()
@@ -189,6 +259,7 @@ function BuildsModule.init(ENV)
         updSaveHandles()
     end
 
+    -- ─── HANDLE DRAG ─────────────────────────────────────────────────────────────
     do
         local sDrag=false; local sDragOP=nil; local sSavedCam=nil
         local sArcDrag=false; local sArcStartRot=nil; local sArcSavedCam=nil
@@ -201,9 +272,7 @@ function BuildsModule.init(ENV)
         RunService.RenderStepped:Connect(function() if sDrag and sSavedCam then Camera.CFrame=sSavedCam end; if sArcDrag and sArcSavedCam then Camera.CFrame=sArcSavedCam end end)
     end
 
-    -- Declarar setWhoBtn antes para que pueda ser usado en refreshWho sin errores
-    local setWhoBtn
-    
+    -- ─── WHO PICKER ──────────────────────────────────────────────────────────────
     local selTickToken = nil
     local refreshWho
     do
@@ -223,18 +292,30 @@ function BuildsModule.init(ENV)
             local row=mk("Frame",whoInner,{Size=UDim2.new(1,0,0,36),BackgroundColor3=listTC(mem.uname),BorderSizePixel=0}); corner(row,8)
             local isL=isLdr(mem.uname); if isL then mk("ImageLabel",row,{Name="LdrIco",Size=UDim2.new(0,16,0,16),Position=UDim2.new(0,3,0.5,-8),BackgroundTransparency=1,Image=ICON_LEADER,ZIndex=3}) end
             local avX2=isL and 22 or 5; local av=mk("ImageLabel",row,{Name="Avatar",Size=UDim2.new(0,26,0,26),Position=UDim2.new(0,avX2,0.5,-13),BackgroundColor3=T.card,BorderSizePixel=0}); corner(av,6)
-            task.spawn(function() local ok2,url=pcall(function() return Players:GetUserThumbnailAsync(mem.uid,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size48x48) end); if ok2 then av.Image=url end end)
+            -- FIX: capturar uid en closure correctamente para cada fila
+            local rowUID = mem.uid
+            task.spawn(function()
+                local ok2,url=pcall(function()
+                    return Players:GetUserThumbnailAsync(rowUID, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+                end)
+                if ok2 and av and av.Parent then av.Image=url end
+            end)
             local nX2=avX2+30
             mk("TextLabel",row,{Position=UDim2.new(0,nX2,0,4),Size=UDim2.new(1,-100,0,14),Text=mem.dname,TextColor3=T.text,BackgroundTransparency=1,Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left})
             mk("TextLabel",row,{Position=UDim2.new(0,nX2,0,20),Size=UDim2.new(1,-100,0,12),Text="@"..mem.uname,TextColor3=T.sub,BackgroundTransparency=1,Font=Enum.Font.Gotham,TextSize=9,TextXAlignment=Enum.TextXAlignment.Left})
             local bkL=mk("TextLabel",row,{Position=UDim2.new(1,-62,0,0),Size=UDim2.new(0,60,1,0),Text="...",TextColor3=T.sub,BackgroundTransparency=1,Font=Enum.Font.GothamBold,TextSize=9,TextXAlignment=Enum.TextXAlignment.Right})
             local rb=mk("TextButton",row,{Size=UDim2.new(1,0,1,0),Text="",BackgroundTransparency=1})
+            -- FIX: capturar todos los valores del miembro en closure
+            local memUID  = mem.uid
+            local memDN   = mem.dname
+            local memUN   = mem.uname
             rb.MouseButton1Click:Connect(function()
-                selPlayer=mem.uname; curUID=mem.uid; curDN=mem.dname; curUN=mem.uname
+                selPlayer=memUN; curUID=memUID; curDN=memDN; curUN=memUN
                 whoVis=false; if whoFrame then whoFrame.Visible=false end
                 if whoBtn then for _,ch in ipairs(whoBtn:GetChildren()) do if ch:IsA("TextLabel")and(ch.Text=="▲"or ch.Text=="▼") then ch.Text="▼" end end end
                 if whoBtn then whoBtn.BackgroundColor3=getTeamColor(curUN) end
-                if setWhoBtn then setWhoBtn(curUID, curDN, curUN) end
+                -- FIX: actualizar avatar del botón principal con el UID correcto
+                setWhoBtn(memUID, memDN, memUN)
                 refreshWho()
             end)
             return {row=row,blockLbl=bkL,lastCount=nil,lastTC=nil}
@@ -259,49 +340,163 @@ function BuildsModule.init(ENV)
         end
     end
 
+    -- ─── setWhoBtn: FIX avatar siempre usa el UID recibido ───────────────────────
+    -- (declarada aquí arriba del ticker que la llama)
+    function setWhoBtn(uid, dn, un)
+        if not whoBtn then return end
+        -- Limpiar hijos excepto decoradores de esquina/borde
+        for _,c in ipairs(whoBtn:GetChildren()) do
+            if not c:IsA("UICorner") and not c:IsA("UIStroke") then c:Destroy() end
+        end
+        whoBtn.BackgroundColor3 = getTeamColor(un)
+        local isL = isLdr(un)
+        if isL then
+            mk("ImageLabel", whoBtn, {Name="LdrIco", Size=UDim2.new(0,14,0,14), Position=UDim2.new(0,4,0.5,-7), BackgroundTransparency=1, Image=ICON_LEADER, ZIndex=3})
+        end
+        local avX = isL and 20 or 4
+        local av  = mk("ImageLabel", whoBtn, {Name="Avatar", Size=UDim2.new(0,22,0,22), Position=UDim2.new(0,avX,0.5,-11), BackgroundColor3=T.card, BorderSizePixel=0})
+        corner(av, 6)
+        -- FIX: capturar uid en variable local para el spawn
+        local capturedUID = uid
+        task.spawn(function()
+            local ok2, url = pcall(function()
+                return Players:GetUserThumbnailAsync(capturedUID, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+            end)
+            if ok2 and av and av.Parent then av.Image = url end
+        end)
+        local nX  = avX + 26
+        local nL  = mk("TextLabel", whoBtn, {
+            Position=UDim2.new(0,nX,0,0), Size=UDim2.new(1,-nX-18,1,0),
+            Text=dn.." (@"..un..")",
+            TextColor3=T.text, BackgroundTransparency=1,
+            Font=Enum.Font.GothamSemibold, TextSize=10,
+            TextXAlignment=Enum.TextXAlignment.Left,
+            TextTruncate=Enum.TextTruncate.AtEnd
+        })
+        mk("TextLabel", whoBtn, {
+            Position=UDim2.new(1,-18,0,0), Size=UDim2.new(0,16,1,0),
+            Text=whoVis and"▲"or"▼",
+            TextColor3=T.sub, BackgroundTransparency=1,
+            Font=Enum.Font.GothamBold, TextSize=10,
+            TextXAlignment=Enum.TextXAlignment.Center
+        })
+        -- Mostrar conteo de bloques de forma asíncrona
+        local capturedUN = un
+        task.spawn(function()
+            local bc = countPB(capturedUN)
+            if nL and nL.Parent then nL.Text = dn.." (@"..capturedUN..") · "..bc end
+        end)
+    end
+
+    -- ─── TICKER ──────────────────────────────────────────────────────────────────
     local function startSelTicker()
         if selTickToken then selTickToken=false end
         local tok={}; selTickToken=tok
         task.spawn(function()
             while selTickToken==tok and SG and SG.Parent do
-                task.wait(1); if selTickToken~=tok then break end
+                task.wait(1)
+                if selTickToken~=tok then break end
                 if not PageSave.Visible then continue end
                 if whoBtn and whoBtn.Parent and not whoVis then
-                    local bc=countPB(curUN); local isL=isLdr(curUN)
-                    local lIco=whoBtn:FindFirstChild("LdrIco")
-                    if isL and not lIco then mk("ImageLabel",whoBtn,{Name="LdrIco",Size=UDim2.new(0,14,0,14),Position=UDim2.new(0,4,0.5,-7),BackgroundTransparency=1,Image=ICON_LEADER,ZIndex=3}) elseif not isL and lIco then lIco:Destroy() end
-                    local av=whoBtn:FindFirstChild("Avatar"); if av then av.Position=UDim2.new(0,isL and 20 or 4,0.5,-11) end
-                    for _,ch in ipairs(whoBtn:GetChildren()) do if ch:IsA("TextLabel") and ch.TextXAlignment==Enum.TextXAlignment.Left then ch.Text=curDN.." (@"..curUN..") · "..bc; break end end
-                    whoBtn.BackgroundColor3=getTeamColor(curUN)
+                    local bc  = countPB(curUN)
+                    local isL = isLdr(curUN)
+                    local lIco = whoBtn:FindFirstChild("LdrIco")
+                    if isL and not lIco then
+                        mk("ImageLabel", whoBtn, {Name="LdrIco", Size=UDim2.new(0,14,0,14), Position=UDim2.new(0,4,0.5,-7), BackgroundTransparency=1, Image=ICON_LEADER, ZIndex=3})
+                    elseif not isL and lIco then
+                        lIco:Destroy()
+                    end
+                    local av = whoBtn:FindFirstChild("Avatar")
+                    if av then av.Position = UDim2.new(0, isL and 20 or 4, 0.5, -11) end
+                    for _,ch in ipairs(whoBtn:GetChildren()) do
+                        if ch:IsA("TextLabel") and ch.TextXAlignment==Enum.TextXAlignment.Left then
+                            ch.Text = curDN.." (@"..curUN..") · "..bc
+                            break
+                        end
+                    end
+                    whoBtn.BackgroundColor3 = getTeamColor(curUN)
                 end
                 if whoVis then refreshWho() end
             end
         end)
     end
 
-    setWhoBtn = function(uid,dn,un)
-        if not whoBtn then return end
-        for _,c in ipairs(whoBtn:GetChildren()) do if not c:IsA("UICorner") and not c:IsA("UIStroke") then c:Destroy() end end
-        whoBtn.BackgroundColor3=getTeamColor(un)
-        local isL=isLdr(un); if isL then mk("ImageLabel",whoBtn,{Name="LdrIco",Size=UDim2.new(0,14,0,14),Position=UDim2.new(0,4,0.5,-7),BackgroundTransparency=1,Image=ICON_LEADER,ZIndex=3}) end
-        local avX=isL and 20 or 4; local av=mk("ImageLabel",whoBtn,{Name="Avatar",Size=UDim2.new(0,22,0,22),Position=UDim2.new(0,avX,0.5,-11),BackgroundColor3=T.card,BorderSizePixel=0}); corner(av,6)
-        task.spawn(function() local ok2,url=pcall(function() return Players:GetUserThumbnailAsync(uid,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size48x48) end); if ok2 then av.Image=url end end)
-        local nX=avX+26; local nL=mk("TextLabel",whoBtn,{Position=UDim2.new(0,nX,0,0),Size=UDim2.new(1,-nX-18,1,0),Text=dn.." (@"..un..")",TextColor3=T.text,BackgroundTransparency=1,Font=Enum.Font.GothamSemibold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
-        mk("TextLabel",whoBtn,{Position=UDim2.new(1,-18,0,0),Size=UDim2.new(0,16,1,0),Text=whoVis and"▲"or"▼",TextColor3=T.sub,BackgroundTransparency=1,Font=Enum.Font.GothamBold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Center})
-        task.spawn(function() local bc=countPB(un); if nL and nL.Parent then nL.Text=dn.." (@"..un..") · "..bc end end)
-    end
-
+    -- ─── UI LAYOUT ───────────────────────────────────────────────────────────────
     local secSave = sec(PageSave, 3)
     mk("TextLabel",secSave,{Size=UDim2.new(1,0,0,14),Text="Seleccionar jugador",TextColor3=T.sub,BackgroundTransparency=1,Font=Enum.Font.GothamSemibold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=0})
     local playerRow=mk("Frame",secSave,{Size=UDim2.new(1,0,0,30),BackgroundTransparency=1,LayoutOrder=1})
-    whoBtn=mk("TextButton",playerRow,{Size=UDim2.new(1,0,0,28),Position=UDim2.new(0,0,0,0),BackgroundColor3=T.input,BorderSizePixel=0,Text="",TextXAlignment=Enum.TextXAlignment.Left}); corner(whoBtn,8); stroke(whoBtn,T.sub,1)
-    setWhoBtn(LP.UserId,"Yo",LP.Name)
+    whoBtn=mk("TextButton",playerRow,{Size=UDim2.new(1,0,0,28),Position=UDim2.new(0,0,0,0),BackgroundColor3=T.input,BorderSizePixel=0,Text="",TextXAlignment=Enum.TextXAlignment.Left})
+    corner(whoBtn,8); stroke(whoBtn,T.sub,1)
+    setWhoBtn(LP.UserId, "Yo", LP.Name)
+
     whoFrame=mk("Frame",secSave,{Size=UDim2.new(1,0,0,1),AutomaticSize=Enum.AutomaticSize.Y,BackgroundColor3=T.card,BorderSizePixel=0,Visible=false,LayoutOrder=2}); corner(whoFrame,8); stroke(whoFrame,T.sub,1); pad(whoFrame,4,4,4,4)
     whoInner=mk("Frame",whoFrame,{Size=UDim2.new(1,0,0,1),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1}); mk("UIListLayout",whoInner,{Padding=UDim.new(0,3)})
     whoBtn.MouseButton1Click:Connect(function()
         whoVis=not whoVis; whoFrame.Visible=whoVis
         if whoVis then refreshWho(); task.spawn(function() while whoVis and whoFrame.Parent do task.wait(1); if not whoVis then break end; refreshWho() end end) end
         for _,ch in ipairs(whoBtn:GetChildren()) do if ch:IsA("TextLabel")and(ch.Text=="▲"or ch.Text=="▼") then ch.Text=whoVis and"▲"or"▼" end end
+    end)
+
+    -- ─── SHARE MODE TOGGLE BUTTON ────────────────────────────────────────────────
+    -- Fila: [Captura] + [SHARE: OFF/ON]
+    local shareRow = mk("Frame", secSave, {
+        Size=UDim2.new(1,0,0,28), BackgroundTransparency=1, LayoutOrder=2
+    })
+
+    local function updateShareBtn(btn2)
+        if shareModeActive then
+            local ldr = getMyTeamLeader()
+            local ldrName = ldr and ldr.Name or "?"
+            btn2.Text = "SHARE: ON (" .. ldrName .. ")"
+            btn2.BackgroundColor3 = T.ok or Color3.fromRGB(0,200,80)
+            btn2.TextColor3 = T.bg or Color3.fromRGB(10,10,10)
+        else
+            btn2.Text = "SHARE: OFF"
+            btn2.BackgroundColor3 = T.btnAlt
+            btn2.TextColor3 = T.text
+        end
+    end
+
+    local btnShareMode = btn(shareRow, "SHARE: OFF", UDim2.new(1,0,0,26), UDim2.new(0,0,0,0), T.btnAlt)
+    btnShareMode.TextSize = 9
+    btnShareMode.MouseButton1Click:Connect(function()
+        shareModeActive = not shareModeActive
+        updateShareBtn(btnShareMode)
+        if shareModeActive then
+            local ldr = getMyTeamLeader()
+            if not ldr then
+                -- Sin líder: avisar y apagar
+                shareModeActive = false
+                updateShareBtn(btnShareMode)
+                if SaveUI.prevStatus then
+                    SaveUI.prevStatus.Text = "No hay líder en tu equipo"
+                    SaveUI.prevStatus.TextColor3 = T.danger
+                end
+            else
+                if SaveUI.prevStatus then
+                    SaveUI.prevStatus.Text = "Share Mode: usando bloques de " .. ldr.Name
+                    SaveUI.prevStatus.TextColor3 = T.ok or Color3.fromRGB(0,200,80)
+                end
+            end
+        else
+            if SaveUI.prevStatus then
+                SaveUI.prevStatus.Text = "Share Mode desactivado"
+                SaveUI.prevStatus.TextColor3 = T.sub
+            end
+        end
+    end)
+
+    -- Actualizar el botón de share cuando cambia el equipo o el liderazgo
+    LP:GetPropertyChangedSignal("Team"):Connect(function()
+        task.wait(0.3)
+        updateShareBtn(btnShareMode)
+        if shareModeActive then
+            local ldr = getMyTeamLeader()
+            if not ldr then
+                shareModeActive = false
+                updateShareBtn(btnShareMode)
+            end
+        end
     end)
 
     local saveRow=mk("Frame",secSave,{Size=UDim2.new(1,0,0,28),BackgroundTransparency=1,LayoutOrder=3})
@@ -336,118 +531,10 @@ function BuildsModule.init(ENV)
     SaveUI.scaleLbl=lbl(sTRow,"1.0x",UDim2.new(0,26,0,24),UDim2.new(1,-48,0,0),T.text); SaveUI.scaleLbl.TextXAlignment=Enum.TextXAlignment.Center
     SaveUI.btnScaleUp=btn(sTRow,"+",UDim2.new(0,22,0,24),UDim2.new(1,-22,0,0),T.btnAlt)
 
-    -- UI Lista de Selección de Líder (Modo Compartir)
-    local ShareSelectFrame = mk("Frame", SG, {
-        Size = UDim2.new(0, 280, 0, 350),
-        Position = UDim2.new(0.5, -140, 0.5, -175),
-        BackgroundColor3 = T.bg,
-        BorderSizePixel = 0,
-        Visible = false,
-        ZIndex = 10
-    })
-    corner(ShareSelectFrame, 8)
-    stroke(ShareSelectFrame, T.accent, 2)
-
-    mk("TextLabel", ShareSelectFrame, {
-        Size = UDim2.new(1, 0, 0, 30),
-        Text = "Selecciona al Líder",
-        TextColor3 = T.text,
-        BackgroundTransparency = 1,
-        Font = Enum.Font.GothamBold,
-        TextSize = 14,
-        ZIndex = 10
-    })
-
-    local ShareListScroll = mk("ScrollingFrame", ShareSelectFrame, {
-        Size = UDim2.new(1, -20, 1, -80),
-        Position = UDim2.new(0, 10, 0, 40),
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        ScrollBarThickness = 4,
-        CanvasSize = UDim2.new(0,0,0,0),
-        AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        ZIndex = 10
-    })
-    mk("UIListLayout", ShareListScroll, {Padding=UDim.new(0,6)})
-
-    local ShareCloseBtn = btn(ShareSelectFrame, "Cancelar", UDim2.new(1, -20, 0, 30), UDim2.new(0, 10, 1, -40), T.danger)
-    ShareCloseBtn.ZIndex = 10
-    ShareCloseBtn.TextSize = 10
-
-    local function buildShareSelectList()
-        for _, child in ipairs(ShareListScroll:GetChildren()) do
-            if child:IsA("TextButton") then child:Destroy() end
-        end
-        for _, p in ipairs(Players:GetPlayers()) do
-            local pBtn = mk("TextButton", ShareListScroll, {
-                Size = UDim2.new(1, 0, 0, 36),
-                Text = "",
-                BackgroundColor3 = p.Team and p.Team.TeamColor.Color or T.btnAlt,
-                BorderSizePixel = 0,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                ZIndex = 10
-            })
-            corner(pBtn, 6)
-            
-            mk("TextLabel", pBtn, {
-                Size = UDim2.new(1, -10, 1, 0),
-                Position = UDim2.new(0, 10, 0, 0),
-                Text = p.DisplayName .. " (@" .. p.Name .. ")",
-                TextColor3 = Color3.new(1,1,1),
-                BackgroundTransparency = 1,
-                Font = Enum.Font.GothamSemibold,
-                TextSize = 12,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                ZIndex = 10
-            })
-            
-            pBtn.MouseButton1Click:Connect(function()
-                shareLeaderName = p.Name
-                ShareSelectFrame.Visible = false
-                SaveUI.BtnShareMode.Text = "Líder: " .. p.DisplayName
-                SaveUI.BtnShareMode.BackgroundColor3 = T.ok
-                SaveUI.BtnShareMode.TextColor3 = T.bg
-            end)
-        end
-    end
-
-    ShareCloseBtn.MouseButton1Click:Connect(function()
-        ShareSelectFrame.Visible = false
-        shareModeOn = false
-        shareLeaderName = nil
-        SaveUI.BtnShareMode.Text = "Modo Compartir: OFF"
-        SaveUI.BtnShareMode.BackgroundColor3 = T.btnAlt
-        SaveUI.BtnShareMode.TextColor3 = T.text
-    end)
-
-    -- Botón Modo Compartir
-    local shRow=mk("Frame",secPrev,{Size=UDim2.new(1,0,0,28),BackgroundTransparency=1,LayoutOrder=5})
-    SaveUI.BtnShareMode=btn(shRow,"Modo Compartir: OFF",UDim2.new(1,0,1,0),nil,T.btnAlt)
-    SaveUI.BtnShareMode.TextSize = 10
-    SaveUI.BtnShareMode.TextColor3 = T.text
-
-    SaveUI.BtnShareMode.MouseButton1Click:Connect(function()
-        shareModeOn = not shareModeOn
-        if shareModeOn then
-            shareLeaderName = nil
-            buildShareSelectList()
-            ShareSelectFrame.Visible = true
-            SaveUI.BtnShareMode.Text = "Selecciona al líder..."
-            SaveUI.BtnShareMode.BackgroundColor3 = T.warn
-            SaveUI.BtnShareMode.TextColor3 = T.bg
-        else
-            ShareSelectFrame.Visible = false
-            shareLeaderName = nil
-            SaveUI.BtnShareMode.Text = "Modo Compartir: OFF"
-            SaveUI.BtnShareMode.BackgroundColor3 = T.btnAlt
-            SaveUI.BtnShareMode.TextColor3 = T.text
-        end
-    end)
-
-    local pPRow=mk("Frame",secPrev,{Size=UDim2.new(1,0,0,28),BackgroundTransparency=1,LayoutOrder=6})
+    local pPRow=mk("Frame",secPrev,{Size=UDim2.new(1,0,0,28),BackgroundTransparency=1,LayoutOrder=5})
     SaveUI.BtnPlaceZone=btn(pPRow,"Centro zona",UDim2.new(0.5,-3,1,0),UDim2.new(0,0,0,0),T.accent)
     SaveUI.BtnSaveSel=btn(pPRow,"Sel. Posicion",UDim2.new(0.5,-3,1,0),UDim2.new(0.5,3,0,0),T.btnAlt)
-    SaveUI.btnBuildSaved=btn(secPrev,"CONSTRUIR GUARDADO",UDim2.new(1,0,0,32),nil,T.purple); SaveUI.btnBuildSaved.LayoutOrder=7
+    SaveUI.btnBuildSaved=btn(secPrev,"CONSTRUIR GUARDADO",UDim2.new(1,0,0,32),nil,T.purple); SaveUI.btnBuildSaved.LayoutOrder=6
     SaveUI.prevStatus=mk("TextLabel",SaveUI.btnBuildSaved,{Size=UDim2.new(0,100,0,12),Position=UDim2.new(1,-104,1,-16),Text="",TextColor3=T.text,BackgroundTransparency=1,Font=Enum.Font.Gotham,TextSize=9,TextXAlignment=Enum.TextXAlignment.Right})
 
     local selBox=mk("SelectionBox",SG,{Color3=T.accent,LineThickness=0.04})
@@ -508,13 +595,14 @@ function BuildsModule.init(ENV)
         end
     end)
 
+    -- ─── SAVE LIST RENDER ────────────────────────────────────────────────────────
     local renderToken = 0
     local rowPool = {}
     local renderSaveList
     renderSaveList = function(isAsync, onComplete)
         renderToken = renderToken + 1
         local myToken = renderToken
-        
+
         local function updateRow(i)
             if myToken ~= renderToken then return false end
             local sv = Saves[i]
@@ -525,7 +613,7 @@ function BuildsModule.init(ENV)
                 local nL=lbl(row,"",UDim2.new(1,-96,1,0),UDim2.new(0,8,0,0),T.text); nL.Name="NameLbl"
                 local useB=mk("TextButton",row,{Name="UseBtn",Size=UDim2.new(0,48,0,22),Position=UDim2.new(1,-92,0.5,-11),Text="Usar",TextColor3=T.text,BackgroundColor3=T.purple,Font=Enum.Font.GothamBold,TextSize=9}); corner(useB,4)
                 local delB=mk("TextButton",row,{Name="DelBtn",Size=UDim2.new(0,40,0,22),Position=UDim2.new(1,-42,0.5,-11),Text="X",TextColor3=T.text,BackgroundColor3=T.danger,Font=Enum.Font.GothamBold,TextSize=11}); corner(delB,4)
-                
+
                 useB.MouseButton1Click:Connect(function()
                     local idx = row.LayoutOrder
                     selSaveIdx=idx; placeScale=1; placeRot=CFrame.identity; SaveUI.scaleLbl.Text="1.0x"
@@ -539,13 +627,13 @@ function BuildsModule.init(ENV)
                     if selSaveIdx==idx then selSaveIdx=nil elseif selSaveIdx and selSaveIdx>idx then selSaveIdx=selSaveIdx-1 end
                     _G[GKEY]=Saves; renderSaveList(); renderSavePrev(); cCache={}
                 end)
-                
+
                 rowPool[i] = row
             else
                 row.Parent = SaveUI.listCont
                 row.LayoutOrder = i
             end
-            
+
             if sv then
                 row.Visible = true
                 local isSel=(selSaveIdx==i)
@@ -565,7 +653,7 @@ function BuildsModule.init(ENV)
             end
             return true
         end
-        
+
         if #Saves==0 then
             for _, row in ipairs(rowPool) do row.Visible = false end
             SaveUI.listScroll.Size=UDim2.new(1,0,0,22)
@@ -582,9 +670,9 @@ function BuildsModule.init(ENV)
             local emptyLbl = SaveUI.listCont:FindFirstChild("EmptyLbl")
             if emptyLbl then emptyLbl.Visible = false end
         end
-        
+
         local newH=math.clamp(#Saves*34,34,102); SaveUI.listScroll.Size=UDim2.new(1,0,0,newH)
-        
+
         if isAsync then
             task.spawn(function()
                 local i = 1
@@ -619,6 +707,7 @@ function BuildsModule.init(ENV)
         end
     end
 
+    -- ─── CAPTURE BUILD ───────────────────────────────────────────────────────────
     SaveUI.btnSaveNow.MouseButton1Click:Connect(function()
         local base=myBaseCF or CFrame.new(myRefPos())
         local data,cnt=captureBuild(selPlayer or LP.Name, base)
@@ -639,16 +728,13 @@ function BuildsModule.init(ENV)
         task.delay(1.2,function() if SaveUI.btnSaveNow and SaveUI.btnSaveNow.Parent then SaveUI.btnSaveNow.Text="Captura"; SaveUI.btnSaveNow.BackgroundColor3=T.build end end)
     end)
 
+    -- ─── BUILD SAVED ─────────────────────────────────────────────────────────────
     local blockQueue2={}; local blockConn2=nil
     local function hookFolder2(folder)
         if blockConn2 then blockConn2:Disconnect(); blockConn2=nil end
         blockQueue2={}
         if folder then
-            blockConn2 = folder.ChildAdded:Connect(function(c)
-                if c:IsA("BasePart") then
-                    blockQueue2[#blockQueue2+1] = c
-                end
-            end)
+            blockConn2=folder.ChildAdded:Connect(function(c) blockQueue2[#blockQueue2+1]=c end)
         end
     end
     local function popBlock2(timeout)
@@ -662,135 +748,229 @@ function BuildsModule.init(ENV)
     end
 
     SaveUI.btnBuildSaved.MouseButton1Click:Connect(function()
-        if saveBuildState.running then saveBuildState.cancel=true; SaveUI.prevStatus.Text="cancelando..."; SaveUI.prevStatus.TextColor3=T.danger; SaveUI.btnBuildSaved.Text="CANCELAR..."; return end
-        if gbRunningRef.value then SaveUI.prevStatus.Text="ya hay una construcción en curso"; SaveUI.prevStatus.TextColor3=T.danger; return end
-        
-        if shareModeOn and not shareLeaderName then
-            SaveUI.prevStatus.Text="Selecciona un líder en Modo Compartir"
+        if saveBuildState.running then
+            saveBuildState.cancel=true
+            SaveUI.prevStatus.Text="cancelando..."
+            SaveUI.prevStatus.TextColor3=T.danger
+            SaveUI.btnBuildSaved.Text="CANCELAR..."
+            return
+        end
+        if gbRunningRef.value then
+            SaveUI.prevStatus.Text="ya hay una construcción en curso"
             SaveUI.prevStatus.TextColor3=T.danger
             return
         end
-        
-        local sv=selSaveIdx and Saves[selSaveIdx]; if not sv then SaveUI.prevStatus.Text="Selecciona un guardado"; SaveUI.prevStatus.TextColor3=T.danger; return end
-        local bTool2=getTool("BuildingTool"); if not bTool2 then SaveUI.prevStatus.Text="Falta BuildingTool"; SaveUI.prevStatus.TextColor3=T.danger; return end
-        local sTool2=getTool("ScalingTool"); local pTool2=getTool("PaintingTool")
+        local sv=selSaveIdx and Saves[selSaveIdx]
+        if not sv then
+            SaveUI.prevStatus.Text="Selecciona un guardado"
+            SaveUI.prevStatus.TextColor3=T.danger
+            return
+        end
+
+        local bTool2=getTool("BuildingTool")
+        if not bTool2 then
+            SaveUI.prevStatus.Text="Falta BuildingTool"
+            SaveUI.prevStatus.TextColor3=T.danger
+            return
+        end
+        local sTool2=getTool("ScalingTool")
+        local pTool2=getTool("PaintingTool")
+
         task.spawn(function()
             saveBuildState.running=true; saveBuildState.cancel=false; gbRunningRef.value=true
-            SaveUI.btnBuildSaved.Text="CANCELAR"; SaveUI.btnBuildSaved.BackgroundColor3=T.danger; SaveUI.btnBuildSaved.Active=true
+            SaveUI.btnBuildSaved.Text="CANCELAR"
+            SaveUI.btnBuildSaved.BackgroundColor3=T.danger
+            SaveUI.btnBuildSaved.Active=true
+
             local ok2,err=pcall(function()
                 equipTool(bTool2); equipTool(sTool2); equipTool(pTool2)
-                local bRF2=bTool2:FindFirstChild("RF"); local sRF2=sTool2 and sTool2:FindFirstChild("RF"); local pRF2=pTool2 and pTool2:FindFirstChild("RF")
+
+                local bRF2 = bTool2:FindFirstChild("RF")
+                local sRF2 = sTool2 and sTool2:FindFirstChild("RF")
+                local pRF2 = pTool2 and pTool2:FindFirstChild("RF")
                 if not bRF2 then error("BuildingTool sin RF") end
-                local pos=curPlacePos(); local delta=getSaveDelta(sv); local center=buildCenter(sv); local cAdj=delta*center
-                
-                local function getLeaderName()
-                    if shareModeOn and shareLeaderName then
-                        return shareLeaderName
-                    end
-                    return LP.Name
+
+                -- ── Determinar fuente de inventario según share mode ──────────
+                local useShareMode = shareModeActive
+                local leaderPlayer = useShareMode and getMyTeamLeader() or nil
+                if useShareMode and not leaderPlayer then
+                    -- No hay líder disponible, desactivar share mode
+                    useShareMode = false
+                    shareModeActive = false
+                    updateShareBtn(btnShareMode)
+                    SaveUI.prevStatus.Text = "No hay líder: share mode apagado"
+                    SaveUI.prevStatus.TextColor3 = T.danger
                 end
-                
-                local targetName = getLeaderName()
-                local folder2 = userFolder(targetName)
+
+                -- dataFolder a usar para verificar inventario
+                local invFolder = useShareMode and getLeaderDataFolder() or dataFolder
+                if not invFolder then
+                    error(useShareMode and "No se pudo obtener dataFolder del líder" or "dataFolder no disponible")
+                end
+
+                local pos=curPlacePos()
+                local delta=getSaveDelta(sv)
+                local center=buildCenter(sv)
+                local cAdj=delta*center
+
+                -- userFolder para detectar bloques nuevos colocados
+                -- En share mode, los bloques nuevos aparecen bajo el folder del LÍDER
+                local targetFolderName = useShareMode and leaderPlayer.Name or LP.Name
+                local folder2 = userFolder(targetFolderName)
                 hookFolder2(folder2)
-                
-                local blocks=sv.data.Block; local total=#blocks; local placed=0; 
-                local WORKERS2 = shareModeOn and 15 or 50
+
+                local blocks=sv.data.Block
+                local total=#blocks
+                local placed=0
+                local WORKERS2 = isSharing() and 15 or 50
                 local nextIdx2=1; local active2=WORKERS2; local ppairs={}
-                
+
                 local function pOB(pd)
-                    local nm=pd.BlockName
-                    local inv=dataFolder and dataFolder:FindFirstChild(nm)
-                    local invCount = inv and inv.Value or 0
-                    
-                    if not shareModeOn and invCount <= 0 then return end
-                    
-                    local rP=Vector3.new(pd.RelX,pd.RelY,pd.RelZ)
-                    local rR=CFrame.Angles(math.rad(pd.RotX or 0),math.rad(pd.RotY or 0),math.rad(pd.RotZ or 0))
-                    local rPA=delta*rP
-                    local rRA=(delta-delta.Position)*rR
-                    local offset=(rPA-cAdj)*placeScale
-                    local rotOff=placeRot*offset
-                    local world=CFrame.new(pos+rotOff)*placeRot*rRA
-                    
-                    if not folder2 or folder2.Parent==nil then
-                        folder2 = userFolder(getLeaderName())
+                    local nm = pd.BlockName
+                    -- ── FIX: verificar inventario en la carpeta correcta ──────
+                    local inv = invFolder and invFolder:FindFirstChild(nm)
+                    if not inv or inv.Value <= 0 then return end
+
+                    local rP = Vector3.new(pd.RelX, pd.RelY, pd.RelZ)
+                    local rR = CFrame.Angles(math.rad(pd.RotX or 0), math.rad(pd.RotY or 0), math.rad(pd.RotZ or 0))
+                    local rPA    = delta * rP
+                    local rRA    = (delta - delta.Position) * rR
+                    local offset = (rPA - cAdj) * placeScale
+                    local rotOff = placeRot * offset
+                    local world  = CFrame.new(pos + rotOff) * placeRot * rRA
+
+                    -- Refrescar userFolder si fue destruido
+                    if not folder2 or folder2.Parent == nil then
+                        folder2 = userFolder(targetFolderName)
                         hookFolder2(folder2)
                     end
-                    
-                    local ret=bRF2:InvokeServer(nm, invCount, nil, world, true, world, false)
+
+                    local ret = bRF2:InvokeServer(nm, inv.Value, nil, world, true, world, false)
                     local blk
-                    if typeof(ret)=="Instance" and ret:IsA("BasePart") then
-                        blk=ret
+                    if typeof(ret) == "Instance" and ret:IsA("BasePart") then
+                        blk = ret
                     else
-                        blk=popBlock2(5) 
+                        blk = popBlock2(2)
                     end
-                    
+
                     if blk then
-                        placed=placed+1
-                        local sz=Vector3.new(pd.SizeX or 2,pd.SizeY or 2,pd.SizeZ or 2)*placeScale
-                        if sRF2 then
-                            pcall(function() sRF2:InvokeServer(blk,sz,world) end)
+                        placed = placed + 1
+                        local sz = Vector3.new(pd.SizeX or 2, pd.SizeY or 2, pd.SizeZ or 2) * placeScale
+
+                        -- ── FIX: Scaling en share mode ────────────────────────
+                        -- El ScalingTool debe operar sobre bloques del líder.
+                        -- Pasamos el bloque directamente con su CFrame y el tamaño deseado.
+                        -- Si estamos en share mode, el bloque ya fue colocado con los
+                        -- recursos del líder, así que sRF2 puede escalarlo directamente.
+                        if sRF2 and (pd.SizeX or pd.SizeY or pd.SizeZ) then
+                            pcall(function()
+                                sRF2:InvokeServer(blk, sz, world)
+                            end)
                         end
+
                         if pd.ColorR then
-                            ppairs[#ppairs+1]={blk,Color3.new(pd.ColorR,pd.ColorG,pd.ColorB)}
+                            ppairs[#ppairs+1] = {blk, Color3.new(pd.ColorR, pd.ColorG, pd.ColorB)}
                         end
                     end
                 end
+
                 local function worker2()
                     while true do
                         if saveBuildState.cancel then break end
-                        local i=nextIdx2
-                        nextIdx2=nextIdx2+1
-                        if i>total then break end
+                        local i = nextIdx2; nextIdx2 = nextIdx2 + 1
+                        if i > total then break end
                         pOB(blocks[i])
                     end
-                    active2=active2-1
+                    active2 = active2 - 1
                 end
-                for _=1,WORKERS2 do task.spawn(worker2) end
-                while active2>0 do
-                    SaveUI.prevStatus.Text=string.format("Construyendo %d/%d",placed,total)
-                    SaveUI.prevStatus.TextColor3=T.warn
+
+                for _ = 1, WORKERS2 do task.spawn(worker2) end
+
+                while active2 > 0 do
+                    SaveUI.prevStatus.Text = string.format(
+                        "%sConstruyendo %d/%d",
+                        useShareMode and "[SHARE] " or "",
+                        placed, total
+                    )
+                    SaveUI.prevStatus.TextColor3 = T.warn
                     task.wait(0.03)
                 end
+
                 if blockConn2 then blockConn2:Disconnect(); blockConn2=nil end
-                if pRF2 and #ppairs>0 and not saveBuildState.cancel then
-                    SaveUI.prevStatus.Text=string.format("Pintando %d bloques...",#ppairs)
-                    SaveUI.prevStatus.TextColor3=T.warn
-                    paintBatch(pRF2,ppairs)
+
+                if pRF2 and #ppairs > 0 and not saveBuildState.cancel then
+                    SaveUI.prevStatus.Text = string.format("Pintando %d bloques...", #ppairs)
+                    SaveUI.prevStatus.TextColor3 = T.warn
+                    paintBatch(pRF2, ppairs)
                 end
+
                 if saveBuildState.cancel then
-                    SaveUI.prevStatus.Text="Cancelado ("..placed.." colocados)"
-                    SaveUI.prevStatus.TextColor3=T.danger
+                    SaveUI.prevStatus.Text = "Cancelado (" .. placed .. " colocados)"
+                    SaveUI.prevStatus.TextColor3 = T.danger
                 else
-                    SaveUI.prevStatus.Text="listo! "..placed.."/"..total.." colocados"
-                    SaveUI.prevStatus.TextColor3=T.ok
+                    SaveUI.prevStatus.Text = "listo! " .. placed .. "/" .. total .. " colocados"
+                    SaveUI.prevStatus.TextColor3 = T.ok
                 end
             end)
+
             if blockConn2 then blockConn2:Disconnect(); blockConn2=nil end
             if not ok2 then
-                SaveUI.prevStatus.Text="error: "..tostring(err)
-                SaveUI.prevStatus.TextColor3=T.danger
+                SaveUI.prevStatus.Text = "error: " .. tostring(err)
+                SaveUI.prevStatus.TextColor3 = T.danger
             end
-            local hum2=LP.Character and LP.Character:FindFirstChild("Humanoid")
-            if hum2 then
-                pcall(function() hum2:UnequipTools() end)
-            end
-            saveBuildState.running=false
-            saveBuildState.cancel=false
-            gbRunningRef.value=false
-            SaveUI.btnBuildSaved.Text="CONSTRUIR GUARDADO"
-            SaveUI.btnBuildSaved.BackgroundColor3=T.purple
-            SaveUI.btnBuildSaved.Active=true
+
+            local hum2 = LP.Character and LP.Character:FindFirstChild("Humanoid")
+            if hum2 then pcall(function() hum2:UnequipTools() end) end
+
+            saveBuildState.running = false
+            saveBuildState.cancel  = false
+            gbRunningRef.value     = false
+            SaveUI.btnBuildSaved.Text             = "CONSTRUIR GUARDADO"
+            SaveUI.btnBuildSaved.BackgroundColor3 = T.purple
+            SaveUI.btnBuildSaved.Active           = true
         end)
     end)
 
-    local function updSelTC() if whoBtn and whoBtn.Parent then whoBtn.BackgroundColor3=getTeamColor(curUN) end end
-    local function watchPTeam(p) p:GetPropertyChangedSignal("Team"):Connect(function() if p.Name==curUN then updSelTC() end; if whoVis then refreshWho() end end) end
+    -- ─── TEAM WATCHERS ───────────────────────────────────────────────────────────
+    local function updSelTC()
+        if whoBtn and whoBtn.Parent then whoBtn.BackgroundColor3 = getTeamColor(curUN) end
+    end
+    local function watchPTeam(p)
+        p:GetPropertyChangedSignal("Team"):Connect(function()
+            if p.Name == curUN then updSelTC() end
+            if whoVis then refreshWho() end
+            -- Si cambia el equipo del líder y share mode está activo, actualizar botón
+            if shareModeActive and isLdr(p.Name) then
+                task.wait(0.2)
+                updateShareBtn(btnShareMode)
+            end
+        end)
+    end
     for _,p in ipairs(Players:GetPlayers()) do watchPTeam(p) end
-    Players.PlayerAdded:Connect(function(p) watchPTeam(p); if whoVis then refreshWho() end end)
-    Players.PlayerRemoving:Connect(function() task.defer(function() if whoVis then refreshWho() end end) end)
+    Players.PlayerAdded:Connect(function(p)
+        watchPTeam(p)
+        if whoVis then refreshWho() end
+    end)
+    Players.PlayerRemoving:Connect(function(p)
+        task.defer(function()
+            if whoVis then refreshWho() end
+            -- Si el líder se fue y share mode estaba activo
+            if shareModeActive then
+                task.wait(0.3)
+                local ldr = getMyTeamLeader()
+                if not ldr then
+                    shareModeActive = false
+                    updateShareBtn(btnShareMode)
+                    if SaveUI.prevStatus then
+                        SaveUI.prevStatus.Text = "Líder salió: share mode apagado"
+                        SaveUI.prevStatus.TextColor3 = T.danger
+                    end
+                end
+            end
+        end)
+    end)
 
+    -- ─── RETURN ──────────────────────────────────────────────────────────────────
     return {
         page            = PageSave,
         renderSaveList  = renderSaveList,
@@ -801,8 +981,8 @@ function BuildsModule.init(ENV)
             task.spawn(function()
                 if SaveUI.listCont then
                     renderToken = renderToken + 1
-                    for _,c in ipairs(SaveUI.listCont:GetChildren()) do 
-                        if not c:IsA("UIListLayout") then c.Visible = false end 
+                    for _,c in ipairs(SaveUI.listCont:GetChildren()) do
+                        if not c:IsA("UIListLayout") then c.Visible = false end
                     end
                     local emptyLbl = SaveUI.listCont:FindFirstChild("EmptyLbl")
                     if not emptyLbl then
@@ -812,13 +992,13 @@ function BuildsModule.init(ENV)
                     end
                     emptyLbl.Visible = true
                 end
-                
+
                 for i = 1, #Saves do Saves[i] = nil end
                 cCache = {}
-                
+
                 if lOrd then lOrd() end
                 if syncOrd then syncOrd() end
-                
+
                 local total = ORD and #ORD or 0
                 local toRemove = {}
                 for i = 1, total do
@@ -829,7 +1009,6 @@ function BuildsModule.init(ENV)
                         if not ok or not res then
                             ok, res = pcall(readBF, path)
                         end
-                        
                         if ok and res and type(res) == "table" then
                             local svData = res.data or res
                             Saves[#Saves+1] = {name=name, data=svData, _path=path}
@@ -837,32 +1016,31 @@ function BuildsModule.init(ENV)
                             toRemove[#toRemove+1] = name
                         end
                     end
-                    
-                    if i % 10 == 0 then
-                        task.wait()
-                    end
+                    if i % 10 == 0 then task.wait() end
                 end
-                
+
                 for _, name in ipairs(toRemove) do
                     if delSaveOrd then delSaveOrd(name) end
                 end
-                
+
                 if selSaveIdx and not Saves[selSaveIdx] then selSaveIdx = nil end
-                
+
                 renderSaveList(true, function()
                     if selSaveIdx then renderSavePrev() else updSaveHandles() end
                     startSelTicker()
                 end)
             end)
         end,
-        hidePreview     = function()
+        hidePreview = function()
             for _,p in ipairs(savePool) do p.Transparency=1; p.Size=Vector3.new(0.05,0.05,0.05) end
-            saveDummy.Position=Vector3.new(0,-9999,0); saveArcAdornee.Position=Vector3.new(0,-9999,0)
-            SaveHandles.Visible=false; SaveArc.Visible=false
+            saveDummy.Position=Vector3.new(0,-9999,0)
+            saveArcAdornee.Position=Vector3.new(0,-9999,0)
+            SaveHandles.Visible=false
+            SaveArc.Visible=false
         end,
-        myBaseCFSetter  = function(cf) myBaseCF=cf end,
-        SaveHandles     = SaveHandles,
-        SaveArc         = SaveArc,
+        myBaseCFSetter = function(cf) myBaseCF=cf end,
+        SaveHandles    = SaveHandles,
+        SaveArc        = SaveArc,
     }
 end
 
