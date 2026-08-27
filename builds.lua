@@ -1193,3 +1193,5 @@ function BuildsModule.init(ENV)
         SaveArc        = SaveArc,
     }
 end
+
+return BuildsModule
