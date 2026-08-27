@@ -59,6 +59,8 @@ function BuildsModule.init(ENV)
     local GKEY        = ENV.GKEY
     local gbRunningRef = ENV.gbRunning
 
+    local Teams = game:GetService("Teams") -- Necesario para buscar a los líderes
+
     local PageSave = mk("ScrollingFrame", Body, {
         Size = UDim2.new(1,0,1,0),
         BackgroundTransparency = 1,
@@ -91,7 +93,6 @@ function BuildsModule.init(ENV)
     local curDN       = "Yo"
     local curUN       = LP.Name
     local saveBuildState = {running=false, cancel=false}
-    -- Nuevo: Estado del modo compartir
     local isShareModeOn = false
 
     local PURPLE_GAMER = Color3.fromRGB(170, 0, 255)
@@ -225,10 +226,11 @@ function BuildsModule.init(ENV)
             local bkL=mk("TextLabel",row,{Position=UDim2.new(1,-62,0,0),Size=UDim2.new(0,60,1,0),Text="...",TextColor3=T.sub,BackgroundTransparency=1,Font=Enum.Font.GothamBold,TextSize=9,TextXAlignment=Enum.TextXAlignment.Right})
             local rb=mk("TextButton",row,{Size=UDim2.new(1,0,1,0),Text="",BackgroundTransparency=1})
             rb.MouseButton1Click:Connect(function()
+                -- Si estamos en modo compartir automático, no permitimos cambiar manualmente
+                if isShareModeOn then return end
                 selPlayer=mem.uname; curUID=mem.uid; curDN=mem.dname; curUN=mem.uname
                 whoVis=false; if whoFrame then whoFrame.Visible=false end
                 if whoBtn then for _,ch in ipairs(whoBtn:GetChildren()) do if ch:IsA("TextLabel")and(ch.Text=="▲"or ch.Text=="▼") then ch.Text="▼" end end end
-                -- FIX: Actualizar visualmente el botón con el jugador seleccionado manualmente
                 setWhoBtn(curUID, curDN, curUN)
                 refreshWho()
             end)
@@ -294,20 +296,67 @@ function BuildsModule.init(ENV)
     whoFrame=mk("Frame",secSave,{Size=UDim2.new(1,0,0,1),AutomaticSize=Enum.AutomaticSize.Y,BackgroundColor3=T.card,BorderSizePixel=0,Visible=false,LayoutOrder=3}); corner(whoFrame,8); stroke(whoFrame,T.sub,1); pad(whoFrame,4,4,4,4)
     whoInner=mk("Frame",whoFrame,{Size=UDim2.new(1,0,0,1),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1}); mk("UIListLayout",whoInner,{Padding=UDim.new(0,3)})
     whoBtn.MouseButton1Click:Connect(function()
+        if isShareModeOn then return end -- Bloquear selección manual si está en auto
         whoVis=not whoVis; whoFrame.Visible=whoVis
         if whoVis then refreshWho(); task.spawn(function() while whoVis and whoFrame.Parent do task.wait(1); if not whoVis then break end; refreshWho() end end) end
         for _,ch in ipairs(whoBtn:GetChildren()) do if ch:IsA("TextLabel")and(ch.Text=="▲"or ch.Text=="▼") then ch.Text=whoVis and"▲"or"▼" end end
     end)
 
-    -- FIX: Botón Modo Compartir ON/OFF
+    -- FIX: Botón Modo Compartir Automático
     local shareRow=mk("Frame",secSave,{Size=UDim2.new(1,0,0,30),BackgroundTransparency=1,LayoutOrder=2})
     SaveUI.btnShareMode=btn(shareRow,"Modo Compartir: OFF",UDim2.new(1,0,0,28),nil,T.btnAlt)
     SaveUI.btnShareMode.TextSize=10
-    SaveUI.btnShareMode.MouseButton1Click:Connect(function()
-        isShareModeOn = not isShareModeOn
-        SaveUI.btnShareMode.Text = isShareModeOn and "Modo Compartir: ON" or "Modo Compartir: OFF"
-        SaveUI.btnShareMode.BackgroundColor3 = isShareModeOn and T.ok or T.btnAlt
-        SaveUI.btnShareMode.TextColor3 = isShareModeOn and T.bg or T.text
+    SaveUI.btnShareMode.Active=false -- Es automático, no se puede clickear
+    
+    -- Lógica de automatización de líder y modo compartir
+    task.spawn(function()
+        local Settings = LP:WaitForChild("Settings", 5)
+        local shareVal = Settings and Settings:WaitForChild("ShareBlocks", 5)
+        
+        if not shareVal then return end
+        
+        local function updateAutoShare()
+            isShareModeOn = shareVal.Value
+            
+            if SaveUI.btnShareMode then
+                SaveUI.btnShareMode.Text = isShareModeOn and "Modo Compartir: ON (Auto)" or "Modo Compartir: OFF (Auto)"
+                SaveUI.btnShareMode.BackgroundColor3 = isShareModeOn and T.ok or T.btnAlt
+                SaveUI.btnShareMode.TextColor3 = isShareModeOn and T.bg or T.text
+            end
+            
+            if isShareModeOn then
+                local t = LP.Team
+                if t then
+                    local tl = t:FindFirstChild("TeamLeader")
+                    if tl and tl.Value ~= "" then
+                        local leader = Players:FindFirstChild(tl.Value)
+                        if leader then
+                            selPlayer = leader.Name
+                            curUID = leader.UserId
+                            curDN = leader.DisplayName or leader.Name
+                            curUN = leader.Name
+                            if whoBtn then setWhoBtn(curUID, curDN, curUN) end
+                        end
+                    end
+                end
+            end
+        end
+        
+        shareVal.Changed:Connect(updateAutoShare)
+        
+        LP:GetPropertyChangedSignal("Team"):Connect(function()
+            task.wait(0.5)
+            local t = LP.Team
+            if t then
+                local tl = t:FindFirstChild("TeamLeader") or t:WaitForChild("TeamLeader", 3)
+                if tl then
+                    tl.Changed:Connect(updateAutoShare)
+                end
+            end
+            updateAutoShare()
+        end)
+        
+        updateAutoShare()
     end)
 
     local saveRow=mk("Frame",secSave,{Size=UDim2.new(1,0,0,28),BackgroundTransparency=1,LayoutOrder=4})
@@ -419,7 +468,7 @@ function BuildsModule.init(ENV)
             local row = rowPool[i]
             if not row then
                 row = mk("Frame",SaveUI.listCont,{Size=UDim2.new(1,0,0,30),BackgroundColor3=T.input,LayoutOrder=i}); corner(row,6)
-                local bar=mk("Frame",row,{Name="Bar",Size=UDim2.new(0,4,1,-10),Position=UDim2.new(0,3,0,5),BackgroundColor3=T.accent,BorderSizePixel=0,Visible=false}); corner(bar,2)
+                local bar=mk("Frame",row,{Name="Bar",Size=UDim2.new(0,4,1,-10),Position=UDim2.new(0,3,0,5),BackgroundColor3=T.accent,BorderSizePixel=0,Visible:false}); corner(bar,2)
                 local nL=lbl(row,"",UDim2.new(1,-96,1,0),UDim2.new(0,8,0,0),T.text); nL.Name="NameLbl"
                 local useB=mk("TextButton",row,{Name="UseBtn",Size=UDim2.new(0,48,0,22),Position=UDim2.new(1,-92,0.5,-11),Text="Usar",TextColor3=T.text,BackgroundColor3=T.purple,Font=Enum.Font.GothamBold,TextSize=9}); corner(useB,4)
                 local delB=mk("TextButton",row,{Name="DelBtn",Size=UDim2.new(0,40,0,22),Position=UDim2.new(1,-42,0.5,-11),Text="X",TextColor3=T.text,BackgroundColor3=T.danger,Font=Enum.Font.GothamBold,TextSize=11}); corner(delB,4)
@@ -556,12 +605,10 @@ function BuildsModule.init(ENV)
                 if not bRF2 then error("BuildingTool sin RF") end
                 local pos=curPlacePos(); local delta=getSaveDelta(sv); local center=buildCenter(sv); local cAdj=delta*center
                 
-                -- FIX LÓGICA DE CARPETA COMPARTIDA
-                -- Si el modo compartir está activado, se asumirá que el líder es selPlayer y se buscará su carpeta.
-                -- Si no, se usará la carpeta local como siempre.
+                -- Aquí decide si usar tu carpeta o la del líder automáticamente
                 local targetName = isShareModeOn and selPlayer or LP.Name
                 local folder2 = userFolder(targetName)
-                if not folder2 or folder2.Parent == nil then folder2 = userFolder(LP.Name) end -- Fallback por seguridad
+                if not folder2 or folder2.Parent == nil then folder2 = userFolder(LP.Name) end 
                 hookFolder2(folder2)
 
                 local blocks=sv.data.Block; local total=#blocks; local placed=0; 
@@ -575,7 +622,6 @@ function BuildsModule.init(ENV)
                     local inv = dataFolder and dataFolder:FindFirstChild(nm)
                     local invVal = (inv and inv.Value) or 1
                     
-                    -- Si no estamos en modo compartir y no tenemos bloques, saltamos
                     if not isShareModeOn and (not inv or invVal <= 0) then return end
                     
                     local rP=Vector3.new(pd.RelX,pd.RelY,pd.RelZ); local rR=CFrame.Angles(math.rad(pd.RotX or 0),math.rad(pd.RotY or 0),math.rad(pd.RotZ or 0))
