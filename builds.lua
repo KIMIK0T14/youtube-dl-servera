@@ -91,7 +91,10 @@ function BuildsModule.init(ENV)
     local curDN       = "Yo"
     local curUN       = LP.Name
     local saveBuildState = {running=false, cancel=false}
-    local shareModeOn = false -- Estado del modo compartir
+    
+    -- Variables del modo compartir
+    local shareModeOn = false
+    local shareLeaderName = nil
 
     local PURPLE_GAMER = Color3.fromRGB(170, 0, 255)
 
@@ -198,6 +201,9 @@ function BuildsModule.init(ENV)
         RunService.RenderStepped:Connect(function() if sDrag and sSavedCam then Camera.CFrame=sSavedCam end; if sArcDrag and sArcSavedCam then Camera.CFrame=sArcSavedCam end end)
     end
 
+    -- Declarar setWhoBtn antes para que pueda ser usado en refreshWho sin errores
+    local setWhoBtn
+    
     local selTickToken = nil
     local refreshWho
     do
@@ -226,8 +232,9 @@ function BuildsModule.init(ENV)
             rb.MouseButton1Click:Connect(function()
                 selPlayer=mem.uname; curUID=mem.uid; curDN=mem.dname; curUN=mem.uname
                 whoVis=false; if whoFrame then whoFrame.Visible=false end
-                -- FIX: Llamar a setWhoBtn para que actualice la foto del avatar correctamente
-                setWhoBtn(curUID, curDN, curUN)
+                if whoBtn then for _,ch in ipairs(whoBtn:GetChildren()) do if ch:IsA("TextLabel")and(ch.Text=="▲"or ch.Text=="▼") then ch.Text="▼" end end end
+                if whoBtn then whoBtn.BackgroundColor3=getTeamColor(curUN) end
+                if setWhoBtn then setWhoBtn(curUID, curDN, curUN) end
                 refreshWho()
             end)
             return {row=row,blockLbl=bkL,lastCount=nil,lastTC=nil}
@@ -272,7 +279,7 @@ function BuildsModule.init(ENV)
         end)
     end
 
-    local function setWhoBtn(uid,dn,un)
+    setWhoBtn = function(uid,dn,un)
         if not whoBtn then return end
         for _,c in ipairs(whoBtn:GetChildren()) do if not c:IsA("UICorner") and not c:IsA("UIStroke") then c:Destroy() end end
         whoBtn.BackgroundColor3=getTeamColor(un)
@@ -329,6 +336,90 @@ function BuildsModule.init(ENV)
     SaveUI.scaleLbl=lbl(sTRow,"1.0x",UDim2.new(0,26,0,24),UDim2.new(1,-48,0,0),T.text); SaveUI.scaleLbl.TextXAlignment=Enum.TextXAlignment.Center
     SaveUI.btnScaleUp=btn(sTRow,"+",UDim2.new(0,22,0,24),UDim2.new(1,-22,0,0),T.btnAlt)
 
+    -- UI Lista de Selección de Líder (Modo Compartir)
+    local ShareSelectFrame = mk("Frame", SG, {
+        Size = UDim2.new(0, 280, 0, 350),
+        Position = UDim2.new(0.5, -140, 0.5, -175),
+        BackgroundColor3 = T.bg,
+        BorderSizePixel = 0,
+        Visible = false,
+        ZIndex = 10
+    })
+    corner(ShareSelectFrame, 8)
+    stroke(ShareSelectFrame, T.accent, 2)
+
+    mk("TextLabel", ShareSelectFrame, {
+        Size = UDim2.new(1, 0, 0, 30),
+        Text = "Selecciona al Líder",
+        TextColor3 = T.text,
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        ZIndex = 10
+    })
+
+    local ShareListScroll = mk("ScrollingFrame", ShareSelectFrame, {
+        Size = UDim2.new(1, -20, 1, -80),
+        Position = UDim2.new(0, 10, 0, 40),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 4,
+        CanvasSize = UDim2.new(0,0,0,0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        ZIndex = 10
+    })
+    mk("UIListLayout", ShareListScroll, {Padding=UDim.new(0,6)})
+
+    local ShareCloseBtn = btn(ShareSelectFrame, "Cancelar", UDim2.new(1, -20, 0, 30), UDim2.new(0, 10, 1, -40), T.danger)
+    ShareCloseBtn.ZIndex = 10
+    ShareCloseBtn.TextSize = 10
+
+    local function buildShareSelectList()
+        for _, child in ipairs(ShareListScroll:GetChildren()) do
+            if child:IsA("TextButton") then child:Destroy() end
+        end
+        for _, p in ipairs(Players:GetPlayers()) do
+            local pBtn = mk("TextButton", ShareListScroll, {
+                Size = UDim2.new(1, 0, 0, 36),
+                Text = "",
+                BackgroundColor3 = p.Team and p.Team.TeamColor.Color or T.btnAlt,
+                BorderSizePixel = 0,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                ZIndex = 10
+            })
+            corner(pBtn, 6)
+            
+            mk("TextLabel", pBtn, {
+                Size = UDim2.new(1, -10, 1, 0),
+                Position = UDim2.new(0, 10, 0, 0),
+                Text = p.DisplayName .. " (@" .. p.Name .. ")",
+                TextColor3 = Color3.new(1,1,1),
+                BackgroundTransparency = 1,
+                Font = Enum.Font.GothamSemibold,
+                TextSize = 12,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                ZIndex = 10
+            })
+            
+            pBtn.MouseButton1Click:Connect(function()
+                shareLeaderName = p.Name
+                ShareSelectFrame.Visible = false
+                SaveUI.BtnShareMode.Text = "Líder: " .. p.DisplayName
+                SaveUI.BtnShareMode.BackgroundColor3 = T.ok
+                SaveUI.BtnShareMode.TextColor3 = T.bg
+            end)
+        end
+    end
+
+    ShareCloseBtn.MouseButton1Click:Connect(function()
+        ShareSelectFrame.Visible = false
+        shareModeOn = false
+        shareLeaderName = nil
+        SaveUI.BtnShareMode.Text = "Modo Compartir: OFF"
+        SaveUI.BtnShareMode.BackgroundColor3 = T.btnAlt
+        SaveUI.BtnShareMode.TextColor3 = T.text
+    end)
+
     -- Botón Modo Compartir
     local shRow=mk("Frame",secPrev,{Size=UDim2.new(1,0,0,28),BackgroundTransparency=1,LayoutOrder=5})
     SaveUI.BtnShareMode=btn(shRow,"Modo Compartir: OFF",UDim2.new(1,0,1,0),nil,T.btnAlt)
@@ -338,10 +429,15 @@ function BuildsModule.init(ENV)
     SaveUI.BtnShareMode.MouseButton1Click:Connect(function()
         shareModeOn = not shareModeOn
         if shareModeOn then
-            SaveUI.BtnShareMode.Text = "Modo Compartir: ON"
-            SaveUI.BtnShareMode.BackgroundColor3 = T.ok
+            shareLeaderName = nil
+            buildShareSelectList()
+            ShareSelectFrame.Visible = true
+            SaveUI.BtnShareMode.Text = "Selecciona al líder..."
+            SaveUI.BtnShareMode.BackgroundColor3 = T.warn
             SaveUI.BtnShareMode.TextColor3 = T.bg
         else
+            ShareSelectFrame.Visible = false
+            shareLeaderName = nil
             SaveUI.BtnShareMode.Text = "Modo Compartir: OFF"
             SaveUI.BtnShareMode.BackgroundColor3 = T.btnAlt
             SaveUI.BtnShareMode.TextColor3 = T.text
@@ -568,6 +664,13 @@ function BuildsModule.init(ENV)
     SaveUI.btnBuildSaved.MouseButton1Click:Connect(function()
         if saveBuildState.running then saveBuildState.cancel=true; SaveUI.prevStatus.Text="cancelando..."; SaveUI.prevStatus.TextColor3=T.danger; SaveUI.btnBuildSaved.Text="CANCELAR..."; return end
         if gbRunningRef.value then SaveUI.prevStatus.Text="ya hay una construcción en curso"; SaveUI.prevStatus.TextColor3=T.danger; return end
+        
+        if shareModeOn and not shareLeaderName then
+            SaveUI.prevStatus.Text="Selecciona un líder en Modo Compartir"
+            SaveUI.prevStatus.TextColor3=T.danger
+            return
+        end
+        
         local sv=selSaveIdx and Saves[selSaveIdx]; if not sv then SaveUI.prevStatus.Text="Selecciona un guardado"; SaveUI.prevStatus.TextColor3=T.danger; return end
         local bTool2=getTool("BuildingTool"); if not bTool2 then SaveUI.prevStatus.Text="Falta BuildingTool"; SaveUI.prevStatus.TextColor3=T.danger; return end
         local sTool2=getTool("ScalingTool"); local pTool2=getTool("PaintingTool")
@@ -580,20 +683,13 @@ function BuildsModule.init(ENV)
                 if not bRF2 then error("BuildingTool sin RF") end
                 local pos=curPlacePos(); local delta=getSaveDelta(sv); local center=buildCenter(sv); local cAdj=delta*center
                 
-                -- Obtiene el nombre del líder del equipo si el Modo Compartir está activado.
                 local function getLeaderName()
-                    if not shareModeOn then return LP.Name end
-                    if LP.Team and isLdr then
-                        for _, p in ipairs(Players:GetPlayers()) do
-                            if p.Team == LP.Team and isLdr(p.Name) then
-                                return p.Name
-                            end
-                        end
+                    if shareModeOn and shareLeaderName then
+                        return shareLeaderName
                     end
                     return LP.Name
                 end
                 
-                -- Hookea la carpeta del líder para capturar sus bloques al ser creados
                 local targetName = getLeaderName()
                 local folder2 = userFolder(targetName)
                 hookFolder2(folder2)
@@ -607,7 +703,6 @@ function BuildsModule.init(ENV)
                     local inv=dataFolder and dataFolder:FindFirstChild(nm)
                     local invCount = inv and inv.Value or 0
                     
-                    -- Si no estamos compartiendo y nos faltan bloques propios, lo saltamos.
                     if not shareModeOn and invCount <= 0 then return end
                     
                     local rP=Vector3.new(pd.RelX,pd.RelY,pd.RelZ)
@@ -628,7 +723,7 @@ function BuildsModule.init(ENV)
                     if typeof(ret)=="Instance" and ret:IsA("BasePart") then
                         blk=ret
                     else
-                        blk=popBlock2(2) -- Si el server no lo retorna, espera a que se añada a la carpeta del líder
+                        blk=popBlock2(5) 
                     end
                     
                     if blk then
