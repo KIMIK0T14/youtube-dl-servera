@@ -736,8 +736,10 @@ function ImagenesModule.init(ENV)
         return bx
     end
 
-    local sizeBox
-    do local r = bRow(24); sizeBox = mkNumRow(r, "Tam. Bloq", "2", 0.5, 0.1) end
+    local resBox, sizeBox, thicknessBox
+    do local r = bRow(24); resBox = mkNumRow(r, "Resolución", "32", 1, 1) end
+    do local r = bRow(24); sizeBox = mkNumRow(r, "Tam. Pixel", "1", 0.1, 0.1) end
+    do local r = bRow(24); thicknessBox = mkNumRow(r, "Grosor", "2", 0.1, 0.1) end
 
     local doMerge = false
     local mergeBtn
@@ -914,19 +916,26 @@ function ImagenesModule.init(ENV)
 
     local function generatePlan()
         if not selImage or not cP then return {} end
-        local BS = math.max(0.1, tonumber(sizeBox.Text) or 2)
+        local res = math.max(1, math.floor(tonumber(resBox.Text) or 32))
+        local pSize = math.max(0.1, tonumber(sizeBox.Text) or 1)
+        local thick = math.max(0.1, tonumber(thicknessBox.Text) or 2)
+
         local img = selImage
         local imgW, imgH, px = img.width, img.height, img.pixels
 
-        -- Auto adaptable: Usa el tamaño nativo de la imagen (1 bloque = 1 pixel)
-        local activeW = imgW
-        local activeH = imgH
+        -- Auto adaptable: Escala manteniendo la relación de aspecto (horizontal, vertical, cuadrada)
+        local scale = res / math.max(imgW, imgH)
+        local activeW = math.max(1, math.floor(imgW * scale))
+        local activeH = math.max(1, math.floor(imgH * scale))
 
         local grid = {}
         for y = 0, activeH - 1 do
             grid[y + 1] = {}
             for x = 0, activeW - 1 do
-                local pixel = px[y * imgW + x + 1]
+                -- Muestreo de la imagen original
+                local sx = math.min(imgW - 1, math.floor(x / scale))
+                local sy = math.min(imgH - 1, math.floor(y / scale))
+                local pixel = px[sy * imgW + sx + 1]
                 if pixel and pixel[4] >= 0.05 then
                     grid[y + 1][x + 1] = {r = pixel[1], g = pixel[2], b = pixel[3], a = pixel[4]}
                 end
@@ -935,8 +944,8 @@ function ImagenesModule.init(ENV)
 
         local plan = {}
         local cx, cy, cz = cP.X, cP.Y, cP.Z
-        local startX = -(activeW * BS) / 2 + BS / 2
-        local startZ = -(activeH * BS) / 2 + BS / 2
+        local startX = -(activeW * pSize) / 2 + pSize / 2
+        local startY = -(activeH * pSize) / 2 + pSize / 2
 
         local function applyRot(cf)
             local centerCF = CFrame.new(cx, cy, cz)
@@ -949,11 +958,11 @@ function ImagenesModule.init(ENV)
                 for x = 1, activeW do
                     local cell = grid[y][x]
                     if cell then
-                        local px_pos = startX + (x - 1) * BS
-                        local pz_pos = startZ + (y - 1) * BS
+                        local px_pos = startX + (x - 1) * pSize
+                        local py_pos = startY + (activeH - y) * pSize
                         plan[#plan + 1] = {
-                            cframe = applyRot(CFrame.new(cx + px_pos, cy, cz + pz_pos)),
-                            size = Vector3.new(BS, BS, BS),
+                            cframe = applyRot(CFrame.new(cx + px_pos, cy + py_pos, cz)),
+                            size = Vector3.new(pSize, pSize, thick), -- X y Y son tamaño de pixel, Z es grosor
                             color = Color3.new(cell.r, cell.g, cell.b),
                         }
                     end
@@ -986,11 +995,11 @@ function ImagenesModule.init(ENV)
                         for yy = y, y + h - 1 do
                             for xx = x, x + w - 1 do used[yy][xx] = true end
                         end
-                        local centerX = startX + (x - 1 + (w - 1) / 2) * BS
-                        local centerZ = startZ + (y - 1 + (h - 1) / 2) * BS
+                        local centerX = startX + (x - 1 + (w - 1) / 2) * pSize
+                        local centerY = startY + (activeH - 1 - (y - 1 + (h - 1) / 2)) * pSize
                         plan[#plan + 1] = {
-                            cframe = applyRot(CFrame.new(cx + centerX, cy, cz + centerZ)),
-                            size = Vector3.new(w * BS, BS, h * BS),
+                            cframe = applyRot(CFrame.new(cx + centerX, cy + centerY, cz)),
+                            size = Vector3.new(w * pSize, h * pSize, thick),
                             color = Color3.new(cell.r, cell.g, cell.b),
                         }
                     end
@@ -1138,7 +1147,6 @@ function ImagenesModule.init(ENV)
                     local blk = placeOne(plan[i])
                     if blk then 
                         placed = placed + 1
-                        -- Guardamos el bloque junto a SU color exacto para evitar que se pinten mal al desordenarse por multithreading
                         pBl[#pBl + 1] = {block = blk, color = useColor and selColor or plan[i].color}
                     end
                 end
