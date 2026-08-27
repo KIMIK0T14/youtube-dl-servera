@@ -1,6 +1,6 @@
 -- imagenes.lua
 -- Módulo: Convertir imágenes PNG a bloques en Build a Boat For Treasure
--- Carga imágenes desde /workspace/Build a Boat For Treasure/images
+-- Soporta PNG (Tipos 0, 2, 3, 4, 6). JPG no soportado por Lua nativamente.
 
 local ImagenesModule = {}
 
@@ -180,6 +180,7 @@ local function inflate(data)
     return output
 end
 
+-- Decodificador PNG Mejorado (Soporta Color Type 0, 2, 3, 4, 6)
 local function decodePNG(data)
     if #data < 8 or data:byte(1) ~= 137 or data:byte(2) ~= 80
        or data:byte(3) ~= 78 or data:byte(4) ~= 71 then
@@ -189,6 +190,8 @@ local function decodePNG(data)
     local pos = 9
     local width, height, bitDepth, colorType
     local idatData = {}
+    local palette = nil
+    local trns = nil
 
     while pos + 8 <= #data do
         local len = (data:byte(pos) * 16777216) + (data:byte(pos + 1) * 65536)
@@ -204,6 +207,12 @@ local function decodePNG(data)
                    + (data:byte(pos + 6) * 256) + data:byte(pos + 7)
             bitDepth = data:byte(pos + 8)
             colorType = data:byte(pos + 9)
+        elseif ctype == "PLTE" then
+            palette = {}
+            for i = 1, len do palette[i] = data:byte(pos + i - 1) end
+        elseif ctype == "tRNS" then
+            trns = {}
+            for i = 1, len do trns[i] = data:byte(pos + i - 1) end
         elseif ctype == "IDAT" then
             idatData[#idatData + 1] = data:sub(pos, pos + len - 1)
         elseif ctype == "IEND" then break end
@@ -212,10 +221,15 @@ local function decodePNG(data)
     end
 
     if not width or not height then return nil, "IHDR no encontrado" end
-    if bitDepth ~= 8 then return nil, "Solo 8-bit soportado" end
-    if colorType ~= 2 and colorType ~= 6 and colorType ~= 0 and colorType ~= 4 then
-        return nil, "Color type " .. tostring(colorType) .. " no soportado"
-    end
+    if bitDepth ~= 8 then return nil, "Solo 8-bit soportado (convierte a PNG 8-bit)" end
+
+    local channels = 0
+    if colorType == 0 then channels = 1
+    elseif colorType == 2 then channels = 3
+    elseif colorType == 3 then channels = 1
+    elseif colorType == 4 then channels = 2
+    elseif colorType == 6 then channels = 4
+    else return nil, "Color type " .. tostring(colorType) .. " no soportado" end
 
     local compressed = table.concat(idatData)
     if #compressed < 6 then return nil, "IDAT vacío" end
@@ -223,8 +237,6 @@ local function decodePNG(data)
     local raw = inflate(deflated)
     if not raw then return nil, "Error descompresión DEFLATE" end
 
-    local channels = (colorType == 2 and 3) or (colorType == 6 and 4)
-                  or (colorType == 0 and 1) or 2
     local bpp = channels
     local stride = width * bpp
     local pixels = {}
@@ -241,6 +253,7 @@ local function decodePNG(data)
             rawIdx = rawIdx + 1
         end
 
+        -- Unfilter
         if fType == 1 then
             for i = bpp + 1, stride do line[i] = (line[i] + line[i - bpp]) % 256 end
         elseif fType == 2 then
@@ -271,10 +284,18 @@ local function decodePNG(data)
                 pixels[(y - 1) * width + x] = {line[o + 1] / 255, line[o + 2] / 255, line[o + 3] / 255, line[o + 4] / 255}
             elseif colorType == 0 then
                 local v = line[o + 1] / 255
-                pixels[(y - 1) * width + x] = {v, v, v, 1}
+                local a = (trns and trns[1] == line[o+1]) and 0 or 1
+                pixels[(y - 1) * width + x] = {v, v, v, a}
             elseif colorType == 4 then
                 local v = line[o + 1] / 255
                 pixels[(y - 1) * width + x] = {v, v, v, line[o + 2] / 255}
+            elseif colorType == 3 then
+                local idx = line[o + 1]
+                local r = palette[idx * 3 + 1] or 0
+                local g = palette[idx * 3 + 2] or 0
+                local b = palette[idx * 3 + 3] or 0
+                local a = (trns and trns[idx + 1]) and (trns[idx + 1] / 255) or 1
+                pixels[(y - 1) * width + x] = {r / 255, g / 255, b / 255, a}
             end
         end
         prevLine = line
@@ -480,10 +501,20 @@ function ImagenesModule.init(ENV)
     selectImage = function(imgInfo)
         local data = FSys.rd(imgInfo.path)
         if not data then imgInfoLabel.Text = "Error: no se pudo leer"; imgInfoLabel.TextColor3 = T.danger; return end
+        
+        local lower = imgInfo.path:lower()
+        if lower:match("%.jpg$") or lower:match("%.jpeg$") then
+            imgInfoLabel.Text = "JPG no soportado. Usa PNG."
+            imgInfoLabel.TextColor3 = T.danger
+            selImage = nil
+            return
+        end
+
         local decoded, err = decodePNG(data)
         if not decoded then
             imgInfoLabel.Text = "Error: " .. tostring(err)
             imgInfoLabel.TextColor3 = T.danger
+            selImage = nil
             return
         end
         selImage = {
@@ -598,7 +629,7 @@ function ImagenesModule.init(ENV)
 
         local pBox = mk("Frame", matPickOv, {
             Size = UDim2.new(1, -20, 0.85, 0), AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(0.5, 0, 0.5, 0), BackgroundColor3 = T.panel, BorderSizePixel = 0, ZIndex = 61,
+            Position = UDim2.new(0.5, 0,0.5, 0), BackgroundColor3 = T.panel, BorderSizePixel = 0, ZIndex = 61,
         })
         corner(pBox, 10)
         mk("TextLabel", pBox, {
@@ -923,19 +954,19 @@ function ImagenesModule.init(ENV)
         local img = selImage
         local imgW, imgH, px = img.width, img.height, img.pixels
 
-        -- Auto adaptable: Escala manteniendo la relación de aspecto (horizontal, vertical, cuadrada)
+        -- Auto adaptable: Escala manteniendo la relación de aspecto perfecta
         local scale = res / math.max(imgW, imgH)
-        local activeW = math.max(1, math.floor(imgW * scale))
-        local activeH = math.max(1, math.floor(imgH * scale))
+        local activeW = math.max(1, math.floor(imgW * scale + 0.5))
+        local activeH = math.max(1, math.floor(imgH * scale + 0.5))
 
         local grid = {}
         for y = 0, activeH - 1 do
             grid[y + 1] = {}
             for x = 0, activeW - 1 do
-                -- Muestreo de la imagen original
-                local sx = math.min(imgW - 1, math.floor(x / scale))
-                local sy = math.min(imgH - 1, math.floor(y / scale))
-                local pixel = px[sy * imgW + sx + 1]
+                -- Muestreo exacto y proporcional
+                local sx = math.floor((x / math.max(1, activeW - 1)) * (imgW - 1)) + 1
+                local sy = math.floor((y / math.max(1, activeH - 1)) * (imgH - 1)) + 1
+                local pixel = px[(sy - 1) * imgW + sx]
                 if pixel and pixel[4] >= 0.05 then
                     grid[y + 1][x + 1] = {r = pixel[1], g = pixel[2], b = pixel[3], a = pixel[4]}
                 end
@@ -962,7 +993,7 @@ function ImagenesModule.init(ENV)
                         local py_pos = startY + (activeH - y) * pSize
                         plan[#plan + 1] = {
                             cframe = applyRot(CFrame.new(cx + px_pos, cy + py_pos, cz)),
-                            size = Vector3.new(pSize, pSize, thick), -- X y Y son tamaño de pixel, Z es grosor
+                            size = Vector3.new(pSize, pSize, thick),
                             color = Color3.new(cell.r, cell.g, cell.b),
                         }
                     end
