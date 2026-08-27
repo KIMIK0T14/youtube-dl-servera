@@ -218,6 +218,19 @@ function BuildsModule.init(ENV)
         RunService.RenderStepped:Connect(function() if sDrag and sSavedCam then Camera.CFrame=sSavedCam end; if sArcDrag and sArcSavedCam then Camera.CFrame=sArcSavedCam end end)
     end
 
+    -- FIX: setWhoBtn se declara ANTES para que buildWhoRow pueda usarlo sin errores
+    local function setWhoBtn(uid,dn,un)
+        if not whoBtn then return end
+        for _,c in ipairs(whoBtn:GetChildren()) do if not c:IsA("UICorner") and not c:IsA("UIStroke") then c:Destroy() end end
+        whoBtn.BackgroundColor3=getTeamColor(un)
+        local isL=isLdr(un); if isL then mk("ImageLabel",whoBtn,{Name="LdrIco",Size=UDim2.new(0,14,0,14),Position=UDim2.new(0,4,0.5,-7),BackgroundTransparency=1,Image=ICON_LEADER,ZIndex=3}) end
+        local avX=isL and 20 or 4; local av=mk("ImageLabel",whoBtn,{Name="Avatar",Size=UDim2.new(0,22,0,22),Position=UDim2.new(0,avX,0.5,-11),BackgroundColor3=T.card,BorderSizePixel=0}); corner(av,6)
+        task.spawn(function() local ok2,url=pcall(function() return Players:GetUserThumbnailAsync(uid,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size48x48) end); if ok2 and av and av.Parent then av.Image=url end end)
+        local nX=avX+26; local nL=mk("TextLabel",whoBtn,{Position=UDim2.new(0,nX,0,0),Size=UDim2.new(1,-nX-18,1,0),Text=dn.." (@"..un..")",TextColor3=T.text,BackgroundTransparency=1,Font=Enum.Font.GothamSemibold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
+        mk("TextLabel",whoBtn,{Position=UDim2.new(1,-18,0,0),Size=UDim2.new(0,16,1,0),Text=whoVis and"▲"or"▼",TextColor3=T.sub,BackgroundTransparency=1,Font=Enum.Font.GothamBold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Center})
+        task.spawn(function() local bc=countPB(un); if nL and nL.Parent then nL.Text=dn.." (@"..un..") · "..bc end end)
+    end
+
     local selTickToken = nil
     local refreshWho
     do
@@ -229,7 +242,30 @@ function BuildsModule.init(ENV)
         end
         local function whoMembers()
             local m={}; local allP=Players:GetPlayers()
-            table.sort(allP,function(a,b) local al,bl=isLdr(a.Name),isLdr(b.Name); if al~=bl then return al end; local at,bt=a.Team and a.Team.TeamColor.Number or -1,b.Team and b.Team.TeamColor.Number or -1; if at~=bt then return at<bt end; return a.Name<b.Name end)
+            local myTeam = LP.Team
+            
+            -- FIX: Ordenamiento jerárquico. Tu equipo primero, luego por líderes y luego por colores.
+            table.sort(allP, function(a, b)
+                local aIsMyTeam = (a.Team == myTeam)
+                local bIsMyTeam = (b.Team == myTeam)
+                if aIsMyTeam ~= bIsMyTeam then
+                    return aIsMyTeam
+                end
+                
+                local aLdr, bLdr = isLdr(a.Name), isLdr(b.Name)
+                if aLdr ~= bLdr then
+                    return aLdr
+                end
+                
+                local at = a.Team and a.Team.TeamColor.Number or -1
+                local bt = b.Team and b.Team.TeamColor.Number or -1
+                if at ~= bt then
+                    return at < bt
+                end
+                
+                return a.Name < b.Name
+            end)
+            
             for _,p in ipairs(allP) do if p.Name~=selPlayer then m[#m+1]={uid=p.UserId,dname=p.DisplayName or p.Name,uname=p.Name} end end
             return m
         end
@@ -237,7 +273,7 @@ function BuildsModule.init(ENV)
             local row=mk("Frame",whoInner,{Size=UDim2.new(1,0,0,36),BackgroundColor3=listTC(mem.uname),BorderSizePixel=0}); corner(row,8)
             local isL=isLdr(mem.uname); if isL then mk("ImageLabel",row,{Name="LdrIco",Size=UDim2.new(0,16,0,16),Position=UDim2.new(0,3,0.5,-8),BackgroundTransparency=1,Image=ICON_LEADER,ZIndex=3}) end
             local avX2=isL and 22 or 5; local av=mk("ImageLabel",row,{Name="Avatar",Size=UDim2.new(0,26,0,26),Position=UDim2.new(0,avX2,0.5,-13),BackgroundColor3=T.card,BorderSizePixel=0}); corner(av,6)
-            task.spawn(function() local ok2,url=pcall(function() return Players:GetUserThumbnailAsync(mem.uid,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size48x48) end); if ok2 then av.Image=url end end)
+            task.spawn(function() local ok2,url=pcall(function() return Players:GetUserThumbnailAsync(mem.uid,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size48x48) end); if ok2 and av and av.Parent then av.Image=url end end)
             local nX2=avX2+30
             mk("TextLabel",row,{Position=UDim2.new(0,nX2,0,4),Size=UDim2.new(1,-100,0,14),Text=mem.dname,TextColor3=T.text,BackgroundTransparency=1,Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left})
             mk("TextLabel",row,{Position=UDim2.new(0,nX2,0,20),Size=UDim2.new(1,-100,0,12),Text="@"..mem.uname,TextColor3=T.sub,BackgroundTransparency=1,Font=Enum.Font.Gotham,TextSize=9,TextXAlignment=Enum.TextXAlignment.Left})
@@ -247,7 +283,6 @@ function BuildsModule.init(ENV)
                 selPlayer=mem.uname; curUID=mem.uid; curDN=mem.dname; curUN=mem.uname
                 whoVis=false; if whoFrame then whoFrame.Visible=false end
                 if whoBtn then for _,ch in ipairs(whoBtn:GetChildren()) do if ch:IsA("TextLabel")and(ch.Text=="▲"or ch.Text=="▼") then ch.Text="▼" end end end
-                -- FIX: Actualizar visualmente el botón con el jugador seleccionado manualmente
                 setWhoBtn(curUID, curDN, curUN)
                 refreshWho()
             end)
@@ -293,18 +328,6 @@ function BuildsModule.init(ENV)
         end)
     end
 
-    local function setWhoBtn(uid,dn,un)
-        if not whoBtn then return end
-        for _,c in ipairs(whoBtn:GetChildren()) do if not c:IsA("UICorner") and not c:IsA("UIStroke") then c:Destroy() end end
-        whoBtn.BackgroundColor3=getTeamColor(un)
-        local isL=isLdr(un); if isL then mk("ImageLabel",whoBtn,{Name="LdrIco",Size=UDim2.new(0,14,0,14),Position=UDim2.new(0,4,0.5,-7),BackgroundTransparency=1,Image=ICON_LEADER,ZIndex=3}) end
-        local avX=isL and 20 or 4; local av=mk("ImageLabel",whoBtn,{Name="Avatar",Size=UDim2.new(0,22,0,22),Position=UDim2.new(0,avX,0.5,-11),BackgroundColor3=T.card,BorderSizePixel=0}); corner(av,6)
-        task.spawn(function() local ok2,url=pcall(function() return Players:GetUserThumbnailAsync(uid,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size48x48) end); if ok2 then av.Image=url end end)
-        local nX=avX+26; local nL=mk("TextLabel",whoBtn,{Position=UDim2.new(0,nX,0,0),Size=UDim2.new(1,-nX-18,1,0),Text=dn.." (@"..un..")",TextColor3=T.text,BackgroundTransparency=1,Font=Enum.Font.GothamSemibold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
-        mk("TextLabel",whoBtn,{Position=UDim2.new(1,-18,0,0),Size=UDim2.new(0,16,1,0),Text=whoVis and"▲"or"▼",TextColor3=T.sub,BackgroundTransparency=1,Font=Enum.Font.GothamBold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Center})
-        task.spawn(function() local bc=countPB(un); if nL and nL.Parent then nL.Text=dn.." (@"..un..") · "..bc end end)
-    end
-
     local secSave = sec(PageSave, 3)
     mk("TextLabel",secSave,{Size=UDim2.new(1,0,0,14),Text="Seleccionar jugador",TextColor3=T.sub,BackgroundTransparency=1,Font=Enum.Font.GothamSemibold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=0})
     local playerRow=mk("Frame",secSave,{Size=UDim2.new(1,0,0,30),BackgroundTransparency=1,LayoutOrder=1})
@@ -318,7 +341,6 @@ function BuildsModule.init(ENV)
         for _,ch in ipairs(whoBtn:GetChildren()) do if ch:IsA("TextLabel")and(ch.Text=="▲"or ch.Text=="▼") then ch.Text=whoVis and"▲"or"▼" end end
     end)
 
-    -- FIX: Botón Modo Compartir ON/OFF
     local shareRow=mk("Frame",secSave,{Size=UDim2.new(1,0,0,30),BackgroundTransparency=1,LayoutOrder=2})
     SaveUI.btnShareMode=btn(shareRow,"Modo Compartir: OFF",UDim2.new(1,0,0,28),nil,T.btnAlt)
     SaveUI.btnShareMode.TextSize=10
@@ -575,12 +597,9 @@ function BuildsModule.init(ENV)
                 if not bRF2 then error("BuildingTool sin RF") end
                 local pos=curPlacePos(); local delta=getSaveDelta(sv); local center=buildCenter(sv); local cAdj=delta*center
                 
-                -- FIX LÓGICA DE CARPETA COMPARTIDA
-                -- Si el modo compartir está activado, se asumirá que el líder es selPlayer y se buscará su carpeta.
-                -- Si no, se usará la carpeta local como siempre.
                 local targetName = isShareModeOn and selPlayer or LP.Name
                 local folder2 = userFolder(targetName)
-                if not folder2 or folder2.Parent == nil then folder2 = userFolder(LP.Name) end -- Fallback por seguridad
+                if not folder2 or folder2.Parent == nil then folder2 = userFolder(LP.Name) end
                 hookFolder2(folder2)
 
                 local blocks=sv.data.Block; local total=#blocks; local placed=0; 
@@ -594,7 +613,6 @@ function BuildsModule.init(ENV)
                     local inv = dataFolder and dataFolder:FindFirstChild(nm)
                     local invVal = (inv and inv.Value) or 1
                     
-                    -- Si no estamos en modo compartir y no tenemos bloques, saltamos
                     if not isShareModeOn and (not inv or invVal <= 0) then return end
                     
                     local rP=Vector3.new(pd.RelX,pd.RelY,pd.RelZ); local rR=CFrame.Angles(math.rad(pd.RotX or 0),math.rad(pd.RotY or 0),math.rad(pd.RotZ or 0))
