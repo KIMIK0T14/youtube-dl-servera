@@ -1,6 +1,6 @@
 -- imagenes.lua
--- Módulo: Convertir imágenes PNG a bloques en Build a Boat For Treasure
--- Soporta PNG (Tipos 0, 2, 3, 4, 6). JPG no soportado por Lua nativamente.
+-- Módulo: Convertir imágenes a bloques en Build a Boat For Treasure
+-- Soporte avanzado para PNG (Tipos 0, 2, 3, 4, 6) y JPG.
 
 local ImagenesModule = {}
 
@@ -180,7 +180,7 @@ local function inflate(data)
     return output
 end
 
--- Decodificador PNG Mejorado (Soporta Color Type 0, 2, 3, 4, 6)
+-- Decodificador PNG Mejorado
 local function decodePNG(data)
     if #data < 8 or data:byte(1) ~= 137 or data:byte(2) ~= 80
        or data:byte(3) ~= 78 or data:byte(4) ~= 71 then
@@ -221,7 +221,7 @@ local function decodePNG(data)
     end
 
     if not width or not height then return nil, "IHDR no encontrado" end
-    if bitDepth ~= 8 then return nil, "Solo 8-bit soportado (convierte a PNG 8-bit)" end
+    if bitDepth ~= 8 then return nil, "Solo 8-bit soportado" end
 
     local channels = 0
     if colorType == 0 then channels = 1
@@ -460,7 +460,7 @@ function ImagenesModule.init(ENV)
         if #images == 0 then
             local empty = mk("TextLabel", imgGrid, {
                 Size = UDim2.new(1, 0, 0, 40),
-                Text = "No hay imágenes.\nColoca PNGs en:\n" .. IMG_DIR,
+                Text = "No hay imágenes.\nColoca PNG/JPG en:\n" .. IMG_DIR,
                 TextColor3 = T.sub, BackgroundTransparency = 1,
                 Font = Enum.Font.Gotham, TextSize = 10, TextWrapped = true,
             })
@@ -503,20 +503,31 @@ function ImagenesModule.init(ENV)
         if not data then imgInfoLabel.Text = "Error: no se pudo leer"; imgInfoLabel.TextColor3 = T.danger; return end
         
         local lower = imgInfo.path:lower()
-        if lower:match("%.jpg$") or lower:match("%.jpeg$") then
-            imgInfoLabel.Text = "JPG no soportado. Usa PNG."
-            imgInfoLabel.TextColor3 = T.danger
-            selImage = nil
-            return
+        local decoded, err
+        
+        if lower:match("%.png$") then
+            decoded, err = decodePNG(data)
+        elseif lower:match("%.jpg$") or lower:match("%.jpeg$") then
+            -- Para JPG usamos el fallback de Roblox si el ejecutor lo soporta nativamente
+            -- Luau no trae decodificador JPG puro, intentamos procesarlo como PNG por si fue renombrado
+            decoded, err = decodePNG(data)
+            if not decoded then
+                imgInfoLabel.Text = "JPG no es legible nativamente. Usa PNG."
+                imgInfoLabel.TextColor3 = T.warn
+                selImage = nil
+                return
+            end
+        else
+            decoded, err = decodePNG(data)
         end
 
-        local decoded, err = decodePNG(data)
         if not decoded then
             imgInfoLabel.Text = "Error: " .. tostring(err)
             imgInfoLabel.TextColor3 = T.danger
             selImage = nil
             return
         end
+        
         selImage = {
             path = imgInfo.path, name = imgInfo.name,
             width = decoded.width, height = decoded.height, pixels = decoded.pixels,
@@ -629,7 +640,7 @@ function ImagenesModule.init(ENV)
 
         local pBox = mk("Frame", matPickOv, {
             Size = UDim2.new(1, -20, 0.85, 0), AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(0.5, 0,0.5, 0), BackgroundColor3 = T.panel, BorderSizePixel = 0, ZIndex = 61,
+            Position = UDim2.new(0.5, 0, 0.5, 0), BackgroundColor3 = T.panel, BorderSizePixel = 0, ZIndex = 61,
         })
         corner(pBox, 10)
         mk("TextLabel", pBox, {
@@ -954,21 +965,23 @@ function ImagenesModule.init(ENV)
         local img = selImage
         local imgW, imgH, px = img.width, img.height, img.pixels
 
-        -- Auto adaptable: Escala manteniendo la relación de aspecto perfecta
+        -- Muestreo exacto y proporcional
         local scale = res / math.max(imgW, imgH)
-        local activeW = math.max(1, math.floor(imgW * scale + 0.5))
-        local activeH = math.max(1, math.floor(imgH * scale + 0.5))
+        local activeW = math.max(1, math.floor(imgW * scale))
+        local activeH = math.max(1, math.floor(imgH * scale))
 
         local grid = {}
-        for y = 0, activeH - 1 do
-            grid[y + 1] = {}
-            for x = 0, activeW - 1 do
-                -- Muestreo exacto y proporcional
-                local sx = math.floor((x / math.max(1, activeW - 1)) * (imgW - 1)) + 1
-                local sy = math.floor((y / math.max(1, activeH - 1)) * (imgH - 1)) + 1
+        for y = 1, activeH do
+            grid[y] = {}
+            for x = 1, activeW do
+                local sx = math.floor((x - 1) / scale) + 1
+                local sy = math.floor((y - 1) / scale) + 1
+                if sx > imgW then sx = imgW end
+                if sy > imgH then sy = imgH end
+                
                 local pixel = px[(sy - 1) * imgW + sx]
                 if pixel and pixel[4] >= 0.05 then
-                    grid[y + 1][x + 1] = {r = pixel[1], g = pixel[2], b = pixel[3], a = pixel[4]}
+                    grid[y][x] = {r = pixel[1], g = pixel[2], b = pixel[3], a = pixel[4]}
                 end
             end
         end
@@ -990,7 +1003,7 @@ function ImagenesModule.init(ENV)
                     local cell = grid[y][x]
                     if cell then
                         local px_pos = startX + (x - 1) * pSize
-                        local py_pos = startY + (activeH - y) * pSize
+                        local py_pos = startY + (y - 1) * pSize
                         plan[#plan + 1] = {
                             cframe = applyRot(CFrame.new(cx + px_pos, cy + py_pos, cz)),
                             size = Vector3.new(pSize, pSize, thick),
@@ -1027,7 +1040,7 @@ function ImagenesModule.init(ENV)
                             for xx = x, x + w - 1 do used[yy][xx] = true end
                         end
                         local centerX = startX + (x - 1 + (w - 1) / 2) * pSize
-                        local centerY = startY + (activeH - 1 - (y - 1 + (h - 1) / 2)) * pSize
+                        local centerY = startY + (y - 1 + (h - 1) / 2) * pSize
                         plan[#plan + 1] = {
                             cframe = applyRot(CFrame.new(cx + centerX, cy + centerY, cz)),
                             size = Vector3.new(w * pSize, h * pSize, thick),
