@@ -1,308 +1,7 @@
 -- imagenes.lua
--- Módulo: Convertir imágenes a bloques en Build a Boat For Treasure
--- Soporte avanzado para PNG (Tipos 0, 2, 3, 4, 6) y JPG.
+-- Módulo: Convertir imágenes a bloques (Usando Servidor Externo)
 
 local ImagenesModule = {}
-
--- ============================================================
--- DECODIFICADOR PNG (Pure Lua con DEFLATE)
--- ============================================================
-
-local function makeBitReader(data)
-    local pos = 1
-    local bit = 0
-    return {
-        readBit = function()
-            if pos > #data then return 0 end
-            local b = math.floor(data:byte(pos) / (2 ^ bit)) % 2
-            bit = bit + 1
-            if bit >= 8 then bit = 0; pos = pos + 1 end
-            return b
-        end,
-        readBits = function(n)
-            local v = 0
-            for i = 0, n - 1 do
-                if pos > #data then return v end
-                v = v + (math.floor(data:byte(pos) / (2 ^ bit)) % 2) * (2 ^ i)
-                bit = bit + 1
-                if bit >= 8 then bit = 0; pos = pos + 1 end
-            end
-            return v
-        end,
-        align = function() if bit > 0 then bit = 0; pos = pos + 1 end end,
-        getPos = function() return pos end,
-        setPos = function(p) pos = p; bit = 0 end,
-    }
-end
-
-local function buildHuffman(lengths)
-    local bl_count = {}
-    local maxLen = 0
-    for i = 1, #lengths do
-        local l = lengths[i]
-        if l and l > 0 then
-            bl_count[l] = (bl_count[l] or 0) + 1
-            if l > maxLen then maxLen = l end
-        end
-    end
-    local next_code = {}
-    local code = 0
-    for i = 1, maxLen do
-        code = (code + (bl_count[i - 1] or 0)) * 2
-        next_code[i] = code
-    end
-    local lookup = {}
-    for i = 1, #lengths do
-        local l = lengths[i]
-        if l and l > 0 then
-            lookup[l * 1000000 + next_code[l]] = i - 1
-            next_code[l] = next_code[l] + 1
-        end
-    end
-    return lookup, maxLen
-end
-
-local function decodeSym(reader, lookup, maxLen)
-    local code = 0
-    for len = 1, maxLen do
-        code = code * 2 + reader.readBit()
-        local sym = lookup[len * 1000000 + code]
-        if sym then return sym end
-    end
-    return nil
-end
-
-local LENGTH_BASE = {3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258}
-local LENGTH_EXTRA = {0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0}
-local DIST_BASE = {1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577}
-local DIST_EXTRA = {0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13}
-local CL_ORDER = {16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15}
-
-local function inflate(data)
-    local reader = makeBitReader(data)
-    local output = {}
-
-    local fixedLit = {}
-    for i = 0, 143 do fixedLit[i + 1] = 8 end
-    for i = 144, 255 do fixedLit[i + 1] = 9 end
-    for i = 256, 279 do fixedLit[i + 1] = 7 end
-    for i = 280, 287 do fixedLit[i + 1] = 8 end
-    local flLookup, flMax = buildHuffman(fixedLit)
-
-    local fixedDist = {}
-    for i = 1, 32 do fixedDist[i] = 5 end
-    local fdLookup, fdMax = buildHuffman(fixedDist)
-
-    while true do
-        local bfinal = reader.readBit()
-        local btype = reader.readBits(2)
-
-        if btype == 0 then
-            reader.align()
-            local p = reader.getPos()
-            local len = data:byte(p) + data:byte(p + 1) * 256
-            reader.setPos(p + 4)
-            for i = 1, len do
-                local bp = reader.getPos()
-                output[#output + 1] = data:byte(bp + i - 1)
-            end
-            reader.setPos(p + 4 + len)
-        elseif btype == 1 or btype == 2 then
-            local litLookup, litMax, distLookup, distMax
-
-            if btype == 1 then
-                litLookup, litMax = flLookup, flMax
-                distLookup, distMax = fdLookup, fdMax
-            else
-                local hlit = reader.readBits(5) + 257
-                local hdist = reader.readBits(5) + 1
-                local hclen = reader.readBits(4) + 4
-
-                local cl_lens = {}
-                for i = 1, hclen do cl_lens[CL_ORDER[i] + 1] = reader.readBits(3) end
-                for i = hclen + 1, 19 do cl_lens[i] = 0 end
-
-                local clLookup, clMax = buildHuffman(cl_lens)
-
-                local all_lens = {}
-                local idx = 1
-                while idx <= hlit + hdist do
-                    local sym = decodeSym(reader, clLookup, clMax)
-                    if not sym then break end
-                    if sym < 16 then
-                        all_lens[idx] = sym
-                        idx = idx + 1
-                    elseif sym == 16 then
-                        local rep = reader.readBits(2) + 3
-                        local prev = all_lens[idx - 1] or 0
-                        for j = 1, rep do all_lens[idx] = prev; idx = idx + 1 end
-                    elseif sym == 17 then
-                        local rep = reader.readBits(3) + 3
-                        for j = 1, rep do all_lens[idx] = 0; idx = idx + 1 end
-                    elseif sym == 18 then
-                        local rep = reader.readBits(7) + 11
-                        for j = 1, rep do all_lens[idx] = 0; idx = idx + 1 end
-                    end
-                end
-
-                local lit_lens = {}
-                for i = 1, hlit do lit_lens[i] = all_lens[i] or 0 end
-                local dist_lens = {}
-                for i = 1, hdist do dist_lens[i] = all_lens[hlit + i] or 0 end
-
-                litLookup, litMax = buildHuffman(lit_lens)
-                distLookup, distMax = buildHuffman(dist_lens)
-            end
-
-            while true do
-                local sym = decodeSym(reader, litLookup, litMax)
-                if not sym or sym == 256 then break end
-                if sym < 256 then
-                    output[#output + 1] = sym
-                else
-                    local li = sym - 256
-                    if li < 1 or li > 29 then break end
-                    local length = LENGTH_BASE[li] + reader.readBits(LENGTH_EXTRA[li])
-                    local dsym = decodeSym(reader, distLookup, distMax)
-                    if dsym and dsym >= 0 and dsym < 30 then
-                        local dist = DIST_BASE[dsym + 1] + reader.readBits(DIST_EXTRA[dsym + 1])
-                        for j = 1, length do
-                            output[#output + 1] = output[#output - dist + 1]
-                        end
-                    end
-                end
-            end
-        end
-
-        if bfinal == 1 then break end
-    end
-
-    return output
-end
-
--- Decodificador PNG Mejorado
-local function decodePNG(data)
-    if #data < 8 or data:byte(1) ~= 137 or data:byte(2) ~= 80
-       or data:byte(3) ~= 78 or data:byte(4) ~= 71 then
-        return nil, "No es PNG válido"
-    end
-
-    local pos = 9
-    local width, height, bitDepth, colorType
-    local idatData = {}
-    local palette = nil
-    local trns = nil
-
-    while pos + 8 <= #data do
-        local len = (data:byte(pos) * 16777216) + (data:byte(pos + 1) * 65536)
-                 + (data:byte(pos + 2) * 256) + data:byte(pos + 3)
-        local ctype = string.char(data:byte(pos + 4), data:byte(pos + 5),
-                                  data:byte(pos + 6), data:byte(pos + 7))
-        pos = pos + 8
-
-        if ctype == "IHDR" then
-            width = (data:byte(pos) * 16777216) + (data:byte(pos + 1) * 65536)
-                  + (data:byte(pos + 2) * 256) + data:byte(pos + 3)
-            height = (data:byte(pos + 4) * 16777216) + (data:byte(pos + 5) * 65536)
-                   + (data:byte(pos + 6) * 256) + data:byte(pos + 7)
-            bitDepth = data:byte(pos + 8)
-            colorType = data:byte(pos + 9)
-        elseif ctype == "PLTE" then
-            palette = {}
-            for i = 1, len do palette[i] = data:byte(pos + i - 1) end
-        elseif ctype == "tRNS" then
-            trns = {}
-            for i = 1, len do trns[i] = data:byte(pos + i - 1) end
-        elseif ctype == "IDAT" then
-            idatData[#idatData + 1] = data:sub(pos, pos + len - 1)
-        elseif ctype == "IEND" then break end
-
-        pos = pos + len + 4
-    end
-
-    if not width or not height then return nil, "IHDR no encontrado" end
-    if bitDepth ~= 8 then return nil, "Solo 8-bit soportado" end
-
-    local channels = 0
-    if colorType == 0 then channels = 1
-    elseif colorType == 2 then channels = 3
-    elseif colorType == 3 then channels = 1
-    elseif colorType == 4 then channels = 2
-    elseif colorType == 6 then channels = 4
-    else return nil, "Color type " .. tostring(colorType) .. " no soportado" end
-
-    local compressed = table.concat(idatData)
-    if #compressed < 6 then return nil, "IDAT vacío" end
-    local deflated = compressed:sub(3, #compressed - 4)
-    local raw = inflate(deflated)
-    if not raw then return nil, "Error descompresión DEFLATE" end
-
-    local bpp = channels
-    local stride = width * bpp
-    local pixels = {}
-    local prevLine = nil
-    local rawIdx = 1
-
-    for y = 1, height do
-        local fType = raw[rawIdx] or 0
-        rawIdx = rawIdx + 1
-
-        local line = {}
-        for i = 1, stride do
-            line[i] = raw[rawIdx] or 0
-            rawIdx = rawIdx + 1
-        end
-
-        -- Unfilter
-        if fType == 1 then
-            for i = bpp + 1, stride do line[i] = (line[i] + line[i - bpp]) % 256 end
-        elseif fType == 2 then
-            if prevLine then for i = 1, stride do line[i] = (line[i] + prevLine[i]) % 256 end end
-        elseif fType == 3 then
-            for i = 1, stride do
-                local a = (i > bpp) and line[i - bpp] or 0
-                local b = prevLine and prevLine[i] or 0
-                line[i] = (line[i] + math.floor((a + b) / 2)) % 256
-            end
-        elseif fType == 4 then
-            for i = 1, stride do
-                local a = (i > bpp) and line[i - bpp] or 0
-                local b = prevLine and prevLine[i] or 0
-                local c = (prevLine and i > bpp) and prevLine[i - bpp] or 0
-                local p = a + b - c
-                local pa, pb, pc = math.abs(p - a), math.abs(p - b), math.abs(p - c)
-                local pr = (pa <= pb and pa <= pc) and a or (pb <= pc and b or c)
-                line[i] = (line[i] + pr) % 256
-            end
-        end
-
-        for x = 1, width do
-            local o = (x - 1) * bpp
-            if colorType == 2 then
-                pixels[(y - 1) * width + x] = {line[o + 1] / 255, line[o + 2] / 255, line[o + 3] / 255, 1}
-            elseif colorType == 6 then
-                pixels[(y - 1) * width + x] = {line[o + 1] / 255, line[o + 2] / 255, line[o + 3] / 255, line[o + 4] / 255}
-            elseif colorType == 0 then
-                local v = line[o + 1] / 255
-                local a = (trns and trns[1] == line[o+1]) and 0 or 1
-                pixels[(y - 1) * width + x] = {v, v, v, a}
-            elseif colorType == 4 then
-                local v = line[o + 1] / 255
-                pixels[(y - 1) * width + x] = {v, v, v, line[o + 2] / 255}
-            elseif colorType == 3 then
-                local idx = line[o + 1]
-                local r = palette[idx * 3 + 1] or 0
-                local g = palette[idx * 3 + 2] or 0
-                local b = palette[idx * 3 + 3] or 0
-                local a = (trns and trns[idx + 1]) and (trns[idx + 1] / 255) or 1
-                pixels[(y - 1) * width + x] = {r / 255, g / 255, b / 255, a}
-            end
-        end
-        prevLine = line
-    end
-
-    return {width = width, height = height, pixels = pixels}
-end
 
 -- ============================================================
 -- INICIALIZACIÓN DEL MÓDULO
@@ -320,7 +19,12 @@ function ImagenesModule.init(ENV)
     local FSys = ENV.FSys; local prevF = ENV.prevF; local envF = ENV.envF
     local ICON_MOVE = ENV.ICON_MOVE; local ICON_ROT = ENV.ICON_ROT
     local gbRunRef = ENV.gbRunning
+    local HttpService = ENV.HttpService
 
+    -- CONFIGURACIÓN DEL SERVIDOR
+    -- Si juegas en PC, usa "http://localhost:5000/process"
+    -- Si juegas en móvil, sube el server.py a Replit y pon la URL aquí:
+    local SERVER_URL = "https://image-blocks-api--aiko8387.replit.app/process"
     local IMG_DIR = "Build a Boat For Treasure/images"
     FSys.mkf(IMG_DIR)
 
@@ -331,6 +35,7 @@ function ImagenesModule.init(ENV)
     local updateHandles, mPv, hPv, setStat, selectImage, refreshGrid
 
     local selImage = nil
+    local isProcessing = false
     local selBlockName = "PlasticBlock"
     local selColor = Color3.fromRGB(255, 255, 255)
     local useColor = false
@@ -498,50 +203,95 @@ function ImagenesModule.init(ENV)
         end
     end
 
+    -- Base64 Encoder para Lua (Necesario para enviar la imagen por HTTP)
+    local b64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    local function base64Encode(data)
+        local t = {}
+        local len = #data
+        for i = 1, len, 3 do
+            local a, b, c, d = data:byte(i), data:byte(i+1) or 0, data:byte(i+2) or 0, 0
+            local n = a * 65536 + b * 256 + c
+            t[#t+1] = b64Chars:sub(math.floor(n / 262144) % 64 + 1, math.floor(n / 262144) % 64 + 1)
+            t[#t+1] = b64Chars:sub(math.floor(n / 4096) % 64 + 1, math.floor(n / 4096) % 64 + 1)
+            t[#t+1] = (i + 1 <= len) and b64Chars:sub(math.floor(n / 64) % 64 + 1, math.floor(n / 64) % 64 + 1) or "="
+            t[#t+1] = (i + 2 <= len) and b64Chars:sub(n % 64 + 1, n % 64 + 1) or "="
+        end
+        return table.concat(t)
+    end
+
     selectImage = function(imgInfo)
+        if isProcessing then return end
+        isProcessing = true
+        imgInfoLabel.Text = "Procesando imagen en servidor..."
+        imgInfoLabel.TextColor3 = T.warn
+        selImage = nil
+        hPv()
+
         local data = FSys.rd(imgInfo.path)
-        if not data then imgInfoLabel.Text = "Error: no se pudo leer"; imgInfoLabel.TextColor3 = T.danger; return end
-        
-        local lower = imgInfo.path:lower()
-        local decoded, err
-        
-        if lower:match("%.png$") then
-            decoded, err = decodePNG(data)
-        elseif lower:match("%.jpg$") or lower:match("%.jpeg$") then
-            -- Para JPG usamos el fallback de Roblox si el ejecutor lo soporta nativamente
-            -- Luau no trae decodificador JPG puro, intentamos procesarlo como PNG por si fue renombrado
-            decoded, err = decodePNG(data)
-            if not decoded then
-                imgInfoLabel.Text = "JPG no es legible nativamente. Usa PNG."
-                imgInfoLabel.TextColor3 = T.warn
-                selImage = nil
-                return
-            end
-        else
-            decoded, err = decodePNG(data)
+        if not data then 
+            imgInfoLabel.Text = "Error: no se pudo leer"; imgInfoLabel.TextColor3 = T.danger
+            isProcessing = false; return 
         end
 
-        if not decoded then
-            imgInfoLabel.Text = "Error: " .. tostring(err)
-            imgInfoLabel.TextColor3 = T.danger
-            selImage = nil
-            return
-        end
-        
-        selImage = {
-            path = imgInfo.path, name = imgInfo.name,
-            width = decoded.width, height = decoded.height, pixels = decoded.pixels,
-        }
-        imgInfoLabel.Text = string.format("%s (%dx%d)", imgInfo.name, decoded.width, decoded.height)
-        imgInfoLabel.TextColor3 = T.text
-        for i, b in ipairs(thumbButtons) do
-            if images[i] and images[i].path == imgInfo.path then
-                b.BackgroundColor3 = T.accent
-            else
-                b.BackgroundColor3 = T.card
+        local res = math.max(1, math.floor(tonumber(resBox.Text) or 32))
+        local pSize = math.max(0.1, tonumber(sizeBox.Text) or 1)
+        local thick = math.max(0.1, tonumber(thicknessBox.Text) or 2)
+        local doMergeVal = doMerge and true or false
+
+        local b64Data = base64Encode(data)
+        local payload = HttpService:JSONEncode({
+            image = b64Data,
+            resolution = res,
+            pSize = pSize,
+            thickness = thick,
+            merge = doMergeVal
+        })
+
+        task.spawn(function()
+            local success, response = pcall(function()
+                local req = (syn and syn.request) or (http and http.request) or (request) or nil
+                if not req then error("Tu executor no soporta peticiones HTTP") end
+                return req({
+                    Url = SERVER_URL,
+                    Method = "POST",
+                    Headers = {["Content-Type"] = "application/json"},
+                    Body = payload
+                })
+            end)
+
+            isProcessing = false
+
+            if not success or not response or response.StatusCode ~= 200 then
+                imgInfoLabel.Text = "Error de servidor. ¿Está encendido?"
+                imgInfoLabel.TextColor3 = T.danger
+                return
             end
-        end
-        mPv()
+
+            local decoded = HttpService:JSONDecode(response.Body)
+            if not decoded or not decoded.success then
+                imgInfoLabel.Text = "Error: " .. (decoded and decoded.error or "Desconocido")
+                imgInfoLabel.TextColor3 = T.danger
+                return
+            end
+
+            selImage = {
+                name = imgInfo.name,
+                blocks = decoded.blocks,
+                count = #decoded.blocks
+            }
+            
+            imgInfoLabel.Text = string.format("%s (%d bloques)", imgInfo.name, selImage.count)
+            imgInfoLabel.TextColor3 = T.text
+
+            for i, b in ipairs(thumbButtons) do
+                if images[i] and images[i].path == imgInfo.path then
+                    b.BackgroundColor3 = T.accent
+                else
+                    b.BackgroundColor3 = T.card
+                end
+            end
+            mPv()
+        end)
     end
 
     do
@@ -573,8 +323,8 @@ function ImagenesModule.init(ENV)
         imgInfoLabel.TextXAlignment = Enum.TextXAlignment.Left
     end
 
+    -- (Se omite el selector de material y color por brevedad, es idéntico al anterior)
     local matPickOv, matPickBtn, mLabelRef, mIconRef
-
     local function updMatBtn(nm, iconId)
         selBlockName = nm
         if mLabelRef then mLabelRef.Text = nm end
@@ -695,13 +445,6 @@ function ImagenesModule.init(ENV)
                     end
                 end
             end
-            if order == 0 then
-                mk("TextLabel", pScroll, {
-                    Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1, Text = "No tienes bloques",
-                    TextColor3 = T.sub, Font = Enum.Font.Gotham, TextSize = 11,
-                    TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 63,
-                })
-            end
         end
         matPickBtn.MouseButton1Click:Connect(function() popPicker(); matPickOv.Visible = true end)
 
@@ -778,13 +521,12 @@ function ImagenesModule.init(ENV)
         return bx
     end
 
-    local resBox, sizeBox, thicknessBox
+    local resBox, sizeBox, thicknessBox, mergeBtn
+    local doMerge = false
     do local r = bRow(24); resBox = mkNumRow(r, "Resolución", "32", 1, 1) end
     do local r = bRow(24); sizeBox = mkNumRow(r, "Tam. Pixel", "1", 0.1, 0.1) end
     do local r = bRow(24); thicknessBox = mkNumRow(r, "Grosor", "2", 0.1, 0.1) end
 
-    local doMerge = false
-    local mergeBtn
     do
         local r = bRow(24)
         lbl(r, "Unir colores", UDim2.new(0, 100, 1, 0), UDim2.new(0, 0, 0, 0), T.sub)
@@ -958,97 +700,19 @@ function ImagenesModule.init(ENV)
 
     local function generatePlan()
         if not selImage or not cP then return {} end
-        local res = math.max(1, math.floor(tonumber(resBox.Text) or 32))
-        local pSize = math.max(0.1, tonumber(sizeBox.Text) or 1)
-        local thick = math.max(0.1, tonumber(thicknessBox.Text) or 2)
-
-        local img = selImage
-        local imgW, imgH, px = img.width, img.height, img.pixels
-
-        -- Muestreo exacto y proporcional
-        local scale = res / math.max(imgW, imgH)
-        local activeW = math.max(1, math.floor(imgW * scale))
-        local activeH = math.max(1, math.floor(imgH * scale))
-
-        local grid = {}
-        for y = 1, activeH do
-            grid[y] = {}
-            for x = 1, activeW do
-                local sx = math.floor((x - 1) / scale) + 1
-                local sy = math.floor((y - 1) / scale) + 1
-                if sx > imgW then sx = imgW end
-                if sy > imgH then sy = imgH end
-                
-                local pixel = px[(sy - 1) * imgW + sx]
-                if pixel and pixel[4] >= 0.05 then
-                    grid[y][x] = {r = pixel[1], g = pixel[2], b = pixel[3], a = pixel[4]}
-                end
-            end
-        end
-
+        -- El servidor ya hizo todo el trabajo, solo aplicamos la rotación y posición de Roblox
         local plan = {}
         local cx, cy, cz = cP.X, cP.Y, cP.Z
-        local startX = -(activeW * pSize) / 2 + pSize / 2
-        local startY = -(activeH * pSize) / 2 + pSize / 2
+        local centerCF = CFrame.new(cx, cy, cz)
 
-        local function applyRot(cf)
-            local centerCF = CFrame.new(cx, cy, cz)
-            if hR then return centerCF * sR * (centerCF:Inverse() * cf) end
-            return cf
-        end
-
-        if not doMerge then
-            for y = 1, activeH do
-                for x = 1, activeW do
-                    local cell = grid[y][x]
-                    if cell then
-                        local px_pos = startX + (x - 1) * pSize
-                        local py_pos = startY + (y - 1) * pSize
-                        plan[#plan + 1] = {
-                            cframe = applyRot(CFrame.new(cx + px_pos, cy + py_pos, cz)),
-                            size = Vector3.new(pSize, pSize, thick),
-                            color = Color3.new(cell.r, cell.g, cell.b),
-                        }
-                    end
-                end
-            end
-        else
-            local used = {}
-            for y = 1, activeH do used[y] = {} end
-            for y = 1, activeH do
-                for x = 1, activeW do
-                    local cell = grid[y][x]
-                    if cell and not used[y][x] then
-                        local key = string.format("%.3f,%.3f,%.3f", cell.r, cell.g, cell.b)
-                        local w = 1
-                        while x + w <= activeW and not used[y][x + w] and grid[y][x + w]
-                              and string.format("%.3f,%.3f,%.3f", grid[y][x + w].r, grid[y][x + w].g, grid[y][x + w].b) == key do
-                            w = w + 1
-                        end
-                        local h = 1; local canGrow = true
-                        while canGrow and y + h <= activeH do
-                            for k = x, x + w - 1 do
-                                local below = grid[y + h] and grid[y + h][k]
-                                if not below or used[y + h][k]
-                                   or string.format("%.3f,%.3f,%.3f", below.r, below.g, below.b) ~= key then
-                                    canGrow = false; break
-                                end
-                            end
-                            if canGrow then h = h + 1 end
-                        end
-                        for yy = y, y + h - 1 do
-                            for xx = x, x + w - 1 do used[yy][xx] = true end
-                        end
-                        local centerX = startX + (x - 1 + (w - 1) / 2) * pSize
-                        local centerY = startY + (y - 1 + (h - 1) / 2) * pSize
-                        plan[#plan + 1] = {
-                            cframe = applyRot(CFrame.new(cx + centerX, cy + centerY, cz)),
-                            size = Vector3.new(w * pSize, h * pSize, thick),
-                            color = Color3.new(cell.r, cell.g, cell.b),
-                        }
-                    end
-                end
-            end
+        for _, blk in ipairs(selImage.blocks) do
+            local localCF = CFrame.new(blk.x, blk.y, blk.z)
+            local finalCF = hR and (centerCF * sR * (centerCF:Inverse() * localCF)) or localCF
+            plan[#plan + 1] = {
+                cframe = finalCF + Vector3.new(cx, cy, cz),
+                size = Vector3.new(blk.sx, blk.sy, blk.sz),
+                color = Color3.new(blk.r, blk.g, blk.b),
+            }
         end
         return plan
     end
